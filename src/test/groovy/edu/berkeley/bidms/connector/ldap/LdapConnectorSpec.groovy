@@ -27,6 +27,10 @@
 
 package edu.berkeley.bidms.connector.ldap
 
+import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
@@ -52,7 +56,17 @@ class LdapConnectorSpec extends Specification {
     @Shared
     UidObjectDefinition uidObjectDef = new UidObjectDefinition("person")
 
-    LdapConnector ldapConnector = Spy(LdapConnector)
+    LdapInsertEventCallback insertEventCallback = Mock(LdapInsertEventCallback)
+    LdapUpdateEventCallback updateEventCallback = Mock(LdapUpdateEventCallback)
+    LdapRenameEventCallback renameEventCallback = Mock(LdapRenameEventCallback)
+    LdapDeleteEventCallback deleteEventCallback = Mock(LdapDeleteEventCallback)
+
+    LdapConnector ldapConnector = new LdapConnector([
+            insertEventCallbacks: [insertEventCallback],
+            updateEventCallbacks: [updateEventCallback],
+            renameEventCallbacks: [renameEventCallback],
+            deleteEventCallbacks: [deleteEventCallback]
+    ])
 
     void setupSpec() {
         this.embeddedLdapServer = new EmbeddedLdapServer() {
@@ -123,9 +137,6 @@ class LdapConnectorSpec extends Specification {
 
     @Unroll("#description")
     void "test LdapConnector persistence"() {
-        given:
-        Name dnName = ldapConnector.buildDnName(dn)
-
         when:
         addOu("people")
         addOu("expired people")
@@ -160,10 +171,10 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == 1
         retrieved.first().dn == dn
         retrieved.first().description == "updated"
-        deletes * ldapConnector.delete(_)
-        renames * ldapConnector.rename(_, _)
-        updates * ldapConnector.update(_, _, _)
-        inserts * ldapConnector.insert(_, _)
+        deletes * deleteEventCallback.success(_)
+        renames * renameEventCallback.success(_, _)
+        updates * updateEventCallback.success(_, _, _)
+        inserts * insertEventCallback.success(_, _)
 
         where:
         description                                                | createFirst | createDupe | uid | dn                                           | deletes | renames | updates | inserts
