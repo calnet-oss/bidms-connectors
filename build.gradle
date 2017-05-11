@@ -1,0 +1,73 @@
+version "0.1-SNAPSHOT"
+group "edu.berkeley.calnet.groovy.libs"
+
+apply plugin: "groovy"
+apply plugin: "maven-publish"
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+repositories {
+    mavenLocal()
+    // If using a Maven proxy, put the property settings in
+    // ~/.gradle/gradle.properties for default_proxy_url,
+    // default_proxy_username and default_proxy_password.
+    if (project.hasProperty("default_proxy_url")) {
+        maven {
+            url project.property("default_proxy_url")
+            credentials {
+                username project.property("default_proxy_username")
+                password project.property("default_proxy_password")
+            }
+        }
+    }
+    jcenter()
+    mavenCentral()
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+task javadocJar (type: Jar, dependsOn: javadoc) {
+    from javadoc.destinationDir
+}
+
+dependencies {
+    compile "org.codehaus.groovy:groovy-all:2.4.11"
+
+    testCompile "org.spockframework:spock-core:1.0-groovy-2.4"
+    testCompile "cglib:cglib-nodep:3.2.5"
+    testCompile "junit:junit:4.12"
+    testCompile "org.slf4j:slf4j-api:1.7.25"
+    testRuntime "org.apache.logging.log4j:log4j-core:2.8.2"
+    testRuntime "org.apache.logging.log4j:log4j-slf4j-impl:2.8.2"
+
+    compile "org.springframework.ldap:spring-ldap-core:2.3.1.RELEASE"
+
+    testCompile "software.apacheds.embedded:apacheds-embedded:0.1"
+}
+
+// publishing with './gradlew publish'
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            artifact sourceJar { classifier "sources" }
+            artifact javadocJar { classifier "javadoc" }
+        }
+    }
+
+    repositories {
+        maven {
+            // Put the property settings in ~/.gradle/gradle.properties for
+            // default_deploy_url, default_deploy_grails_plugin_repo
+            // default_deploy_username and default_deploy_password.
+            url "${project.property('default_deploy_url')}/${default_deploy_lib_repo}"
+            credentials {
+                username project.property("default_deploy_user")
+                password project.property("default_deploy_password")
+            }
+        }
+    }
+}
