@@ -54,11 +54,11 @@ class LdapConnector implements Connector {
     List<LdapUpdateEventCallback> updateEventCallbacks = []
     List<LdapInsertEventCallback> insertEventCallbacks = []
 
-    List<Map<String, Object>> search(LdapObjectDefinition objectDef, String pkey) {
+    List<Map<String, Object>> search(String eventId, LdapObjectDefinition objectDef, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toMapContextMapper)
     }
 
-    void delete(String dn) throws LdapConnectorException {
+    void delete(String eventId, String dn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.unbind(buildDnName(dn))
@@ -69,14 +69,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                deleteEventCallbacks.each { it.failure(dn, exception) }
+                deleteEventCallbacks.each { it.failure(eventId, dn, exception) }
             } else {
-                deleteEventCallbacks.each { it.success(dn) }
+                deleteEventCallbacks.each { it.success(eventId, dn) }
             }
         }
     }
 
-    void rename(String oldDn, String newDn) throws LdapConnectorException {
+    void rename(String eventId, String oldDn, String newDn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
@@ -87,14 +87,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                renameEventCallbacks.each { it.failure(oldDn, newDn, exception) }
+                renameEventCallbacks.each { it.failure(eventId, oldDn, newDn, exception) }
             } else {
-                renameEventCallbacks.each { it.success(oldDn, newDn) }
+                renameEventCallbacks.each { it.success(eventId, oldDn, newDn) }
             }
         }
     }
 
-    void update(String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
+    void update(String eventId, String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
         Throwable exception
         try {
             Map<String, Object> attrsToBind
@@ -112,14 +112,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(oldDn, oldAttributeMap, dn, newAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, oldDn, oldAttributeMap, dn, newAttributeMap) }
             }
         }
     }
 
-    void insert(String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
+    void insert(String eventId, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(attributeMap))
@@ -130,9 +130,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                insertEventCallbacks.each { it.failure(dn, attributeMap, exception) }
+                insertEventCallbacks.each { it.failure(eventId, dn, attributeMap, exception) }
             } else {
-                insertEventCallbacks.each { it.success(dn, attributeMap) }
+                insertEventCallbacks.each { it.success(eventId, dn, attributeMap) }
             }
         }
     }
@@ -143,7 +143,7 @@ class LdapConnector implements Connector {
      * @return true if the object was successfully persisted to LDAP.  false indicates an error.
      */
     @Override
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
+    boolean persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = jsonObject[pkeyAttrName]
         String dn = jsonObject.dn
@@ -161,7 +161,7 @@ class LdapConnector implements Connector {
         // In this context, it does not mean "authenticate (bind) to the LDAP server."
 
         // See if the record already exists
-        List<Map<String, Object>> searchResults = search((LdapObjectDefinition) objectDef, pkey)
+        List<Map<String, Object>> searchResults = search(eventId, (LdapObjectDefinition) objectDef, pkey)
 
         //
         // There's only supposed to be one entry-per-pkey in the directory, but this is not guaranteed to always be the case.
@@ -182,7 +182,7 @@ class LdapConnector implements Connector {
         // Delete all the entries that we're not keeping as the existingEntry
         searchResults.each { Map<String, Object> entry ->
             if (entry.dn != existingEntry?.dn) {
-                delete(entry.dn.toString())
+                delete(eventId, entry.dn.toString())
             }
         }
 
@@ -196,13 +196,13 @@ class LdapConnector implements Connector {
             // Check for need to move DNs
             if (existingDn != dn) {
                 // Move DN
-                rename(existingDn, dn)
+                rename(eventId, existingDn, dn)
             }
 
-            update(existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+            update(eventId, existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
         } else {
             // Doesn't already exist -- create
-            insert(dn, jsonObject)
+            insert(eventId, dn, jsonObject)
         }
 
         return true

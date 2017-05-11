@@ -28,5 +28,5 @@
 package edu.berkeley.bidms.connector
 
 interface Connector {
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws ConnectorException
+    boolean persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws ConnectorException
 }

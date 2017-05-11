@@ -28,7 +28,7 @@
 package edu.berkeley.bidms.connector.ldap.event
 
 interface LdapDeleteEventCallback extends LdapEventCallback {
-    void success(String dn)
+    void success(String eventId, String dn)
 
-    void failure(String dn, Throwable exception)
+    void failure(String eventId, String dn, Throwable exception)
 }

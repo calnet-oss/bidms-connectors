@@ -143,8 +143,9 @@ class LdapConnectorSpec extends Specification {
         addOu("people")
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
         String uid = "1"
+        String eventId = "eventId"
         // create
-        ldapConnector.persist(objDef, [
+        ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson"],
@@ -153,7 +154,7 @@ class LdapConnectorSpec extends Specification {
                 description: "initial test"
         ])
         // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
-        ldapConnector.persist(objDef, [
+        ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson"],
@@ -192,7 +193,8 @@ class LdapConnectorSpec extends Specification {
             addTestEntry("uid=$uid,ou=expired people,dc=berkeley,dc=edu", uid)
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
-        boolean result = ldapConnector.persist(uidObjectDef, [
+        String eventId = "eventId"
+        boolean result = ldapConnector.persist(eventId, uidObjectDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson"],
@@ -214,10 +216,10 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == 1
         retrieved.first().dn == dn
         retrieved.first().description == "updated"
-        deletes * deleteEventCallback.success(_)
-        renames * renameEventCallback.success(_, _)
-        updates * updateEventCallback.success(_, _, _, _)
-        inserts * insertEventCallback.success(_, _)
+        deletes * deleteEventCallback.success("eventId", _)
+        renames * renameEventCallback.success("eventId", _, _)
+        updates * updateEventCallback.success("eventId", _, _, _, _)
+        inserts * insertEventCallback.success("eventId", _, _)
 
         where:
         description                                                | createFirst | createDupe | uid | dn                                           | deletes | renames | updates | inserts
