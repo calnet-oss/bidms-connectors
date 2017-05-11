@@ -58,7 +58,7 @@ class LdapConnector implements Connector {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toMapContextMapper)
     }
 
-    void delete(String eventId, String dn) throws LdapConnectorException {
+    void delete(String eventId, String pkey, String dn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.unbind(buildDnName(dn))
@@ -69,14 +69,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                deleteEventCallbacks.each { it.failure(eventId, dn, exception) }
+                deleteEventCallbacks.each { it.failure(eventId, pkey, dn, exception) }
             } else {
-                deleteEventCallbacks.each { it.success(eventId, dn) }
+                deleteEventCallbacks.each { it.success(eventId, pkey, dn) }
             }
         }
     }
 
-    void rename(String eventId, String oldDn, String newDn) throws LdapConnectorException {
+    void rename(String eventId, String pkey, String oldDn, String newDn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
@@ -87,14 +87,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                renameEventCallbacks.each { it.failure(eventId, oldDn, newDn, exception) }
+                renameEventCallbacks.each { it.failure(eventId, pkey, oldDn, newDn, exception) }
             } else {
-                renameEventCallbacks.each { it.success(eventId, oldDn, newDn) }
+                renameEventCallbacks.each { it.success(eventId, pkey, oldDn, newDn) }
             }
         }
     }
 
-    void update(String eventId, String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
+    void update(String eventId, String pkey, String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
         Throwable exception
         try {
             Map<String, Object> attrsToBind
@@ -112,14 +112,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, pkey, oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, oldDn, oldAttributeMap, dn, newAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, pkey, oldDn, oldAttributeMap, dn, newAttributeMap) }
             }
         }
     }
 
-    void insert(String eventId, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
+    void insert(String eventId, String pkey, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(attributeMap))
@@ -130,9 +130,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                insertEventCallbacks.each { it.failure(eventId, dn, attributeMap, exception) }
+                insertEventCallbacks.each { it.failure(eventId, pkey, dn, attributeMap, exception) }
             } else {
-                insertEventCallbacks.each { it.success(eventId, dn, attributeMap) }
+                insertEventCallbacks.each { it.success(eventId, pkey, dn, attributeMap) }
             }
         }
     }
@@ -182,7 +182,7 @@ class LdapConnector implements Connector {
         // Delete all the entries that we're not keeping as the existingEntry
         searchResults.each { Map<String, Object> entry ->
             if (entry.dn != existingEntry?.dn) {
-                delete(eventId, entry.dn.toString())
+                delete(eventId, pkey, entry.dn.toString())
             }
         }
 
@@ -196,13 +196,13 @@ class LdapConnector implements Connector {
             // Check for need to move DNs
             if (existingDn != dn) {
                 // Move DN
-                rename(eventId, existingDn, dn)
+                rename(eventId, pkey, existingDn, dn)
             }
 
-            update(eventId, existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+            update(eventId, pkey, existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
         } else {
             // Doesn't already exist -- create
-            insert(eventId, dn, jsonObject)
+            insert(eventId, pkey, dn, jsonObject)
         }
 
         return true

@@ -28,7 +28,7 @@
 package edu.berkeley.bidms.connector.ldap.event
 
 interface LdapUpdateEventCallback extends LdapEventCallback {
-    void success(String eventId, String oldDn, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes)
+    void success(String eventId, String pkey, String oldDn, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes)
 
-    void failure(String eventId, String oldDn, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes, Throwable exception)
+    void failure(String eventId, String pkey, String oldDn, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes, Throwable exception)
 }
