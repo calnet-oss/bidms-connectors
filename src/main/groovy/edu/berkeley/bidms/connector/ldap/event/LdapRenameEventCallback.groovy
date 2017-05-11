@@ -25,8 +25,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector
+package edu.berkeley.bidms.connector.ldap.event
 
-interface Connector {
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws ConnectorException
+interface LdapRenameEventCallback extends LdapEventCallback {
+    void success(String oldDn, String newDn)
+
+    void failure(String oldDn, String newDn, Throwable exception)
 }

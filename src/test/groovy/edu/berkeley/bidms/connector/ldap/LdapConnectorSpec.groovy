@@ -162,7 +162,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         deletes * ldapConnector.delete(_)
         renames * ldapConnector.rename(_, _)
-        updates * ldapConnector.update(_, _)
+        updates * ldapConnector.update(_, _, _)
         inserts * ldapConnector.insert(_, _)
 
         where:

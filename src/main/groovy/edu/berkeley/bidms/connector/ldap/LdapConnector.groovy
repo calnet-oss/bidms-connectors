@@ -29,6 +29,10 @@ package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.Connector
 import edu.berkeley.bidms.connector.ObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.core.ContextMapper
 import org.springframework.ldap.core.LdapTemplate
@@ -43,37 +47,96 @@ import javax.naming.directory.BasicAttributes
 class LdapConnector implements Connector {
 
     LdapTemplate ldapTemplate
-
     ContextMapper<Map<String, Object>> toMapContextMapper = new ToMapContextMapper()
 
-    List<Map<String, Object>> search(LdapObjectDefinition objectDef, String uid) {
-        return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(uid), toMapContextMapper)
+    List<LdapDeleteEventCallback> deleteEventCallbacks = []
+    List<LdapRenameEventCallback> renameEventCallbacks = []
+    List<LdapUpdateEventCallback> updateEventCallbacks = []
+    List<LdapInsertEventCallback> insertEventCallbacks = []
+
+    List<Map<String, Object>> search(LdapObjectDefinition objectDef, String pkey) {
+        return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toMapContextMapper)
     }
 
-    void delete(String dn) {
-        ldapTemplate.unbind(buildDnName(dn))
+    void delete(String dn) throws LdapConnectorException {
+        Throwable exception
+        try {
+            ldapTemplate.unbind(buildDnName(dn))
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            if (exception) {
+                deleteEventCallbacks.each { it.failure(dn, exception) }
+            } else {
+                deleteEventCallbacks.each { it.success(dn) }
+            }
+        }
     }
 
-    void rename(String oldDn, String newDn) {
-        ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
+    void rename(String oldDn, String newDn) throws LdapConnectorException {
+        Throwable exception
+        try {
+            ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            if (exception) {
+                renameEventCallbacks.each { it.failure(oldDn, newDn, exception) }
+            } else {
+                renameEventCallbacks.each { it.success(oldDn, newDn) }
+            }
+        }
     }
 
-    void update(String dn, Map<String, Object> attributeMap) {
-        ldapTemplate.rebind(buildDnName(dn), null, buildAttributes(attributeMap))
+    void update(String dn, Map<String, Object> oldAttributeMap, Map<String, Object> newAttributeMap) throws LdapConnectorException {
+        Throwable exception
+        try {
+            ldapTemplate.rebind(buildDnName(dn), null, buildAttributes(newAttributeMap))
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            if (exception) {
+                updateEventCallbacks.each { it.failure(dn, oldAttributeMap, newAttributeMap, exception) }
+            } else {
+                updateEventCallbacks.each { it.success(dn, oldAttributeMap, newAttributeMap) }
+            }
+        }
     }
 
-    void insert(String dn, Map<String, Object> attributeMap) {
-        ldapTemplate.bind(buildDnName(dn), null, buildAttributes(attributeMap))
+    void insert(String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
+        Throwable exception
+        try {
+            ldapTemplate.bind(buildDnName(dn), null, buildAttributes(attributeMap))
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            if (exception) {
+                insertEventCallbacks.each { it.failure(dn, attributeMap, exception) }
+            } else {
+                insertEventCallbacks.each { it.success(dn, attributeMap) }
+            }
+        }
     }
 
     /**
-     *
-     * @param uid owner of the LDAP jsonObject to provision
+     * @param objectDef Object definition of the LDAP object
      * @param jsonObject The objJson extracted from a LDAP DownstreamObject
      * @return true if the object was successfully persisted to LDAP.  false indicates an error.
      */
     @Override
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) {
+    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = jsonObject[pkeyAttrName]
         String dn = jsonObject.dn
@@ -125,7 +188,7 @@ class LdapConnector implements Connector {
                 rename(existingEntry.dn.toString(), dn)
             }
 
-            update(dn, jsonObject)
+            update(dn, existingEntry, jsonObject)
         } else {
             // Doesn't already exist -- create
             insert(dn, jsonObject)

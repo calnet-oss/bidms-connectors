@@ -27,6 +27,8 @@
 
 package edu.berkeley.bidms.connector
 
-interface Connector {
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws ConnectorException
+import groovy.transform.InheritConstructors
+
+@InheritConstructors
+class ConnectorException extends Exception {
 }

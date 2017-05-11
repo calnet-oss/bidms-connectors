@@ -25,8 +25,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector
+package edu.berkeley.bidms.connector.ldap
 
-interface Connector {
-    boolean persist(ObjectDefinition objectDef, Map<String, Object> jsonObject) throws ConnectorException
+import edu.berkeley.bidms.connector.ConnectorException
+import groovy.transform.InheritConstructors
+
+@InheritConstructors
+class LdapConnectorException extends ConnectorException{
 }
