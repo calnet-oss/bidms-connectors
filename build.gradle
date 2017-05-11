@@ -25,12 +25,18 @@ repositories {
     mavenCentral()
 }
 
-task sourceJar(type: Jar) {
-    from sourceSets.main.allJava
+jar {
+    from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
 }
 
-task javadocJar (type: Jar, dependsOn: javadoc) {
-    from javadoc.destinationDir
+task sourceJar(type: Jar) {
+    from sourceSets.main.allGroovy
+    from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
+}
+
+task groovydocJar (type: Jar, dependsOn: groovydoc) {
+    from groovydoc.destinationDir
+    from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
 }
 
 dependencies {
@@ -49,12 +55,14 @@ dependencies {
 }
 
 // publishing with './gradlew publish'
+publish.dependsOn assemble, sourceJar, groovydocJar
+publishToMavenLocal.dependsOn assemble, sourceJar, groovydocJar
 publishing {
     publications {
         maven(MavenPublication) {
             from components.java
             artifact sourceJar { classifier "sources" }
-            artifact javadocJar { classifier "javadoc" }
+            artifact groovydocJar { classifier "javadoc" }
         }
     }
 
