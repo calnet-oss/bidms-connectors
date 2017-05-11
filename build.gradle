@@ -34,7 +34,7 @@ task sourceJar(type: Jar) {
     from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
 }
 
-task groovydocJar (type: Jar, dependsOn: groovydoc) {
+task javadocJar (type: Jar, dependsOn: groovydoc) {
     from groovydoc.destinationDir
     from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
 }
@@ -55,14 +55,14 @@ dependencies {
 }
 
 // publishing with './gradlew publish'
-publish.dependsOn assemble, sourceJar, groovydocJar
-publishToMavenLocal.dependsOn assemble, sourceJar, groovydocJar
+publish.dependsOn assemble, sourceJar, javadocJar
+publishToMavenLocal.dependsOn assemble, sourceJar, javadocJar
 publishing {
     publications {
         maven(MavenPublication) {
             from components.java
             artifact sourceJar { classifier "sources" }
-            artifact groovydocJar { classifier "javadoc" }
+            artifact javadocJar { classifier "javadoc" }
         }
     }
 
