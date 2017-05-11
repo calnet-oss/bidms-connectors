@@ -94,10 +94,17 @@ class LdapConnector implements Connector {
         }
     }
 
-    void update(String dn, Map<String, Object> oldAttributeMap, Map<String, Object> newAttributeMap) throws LdapConnectorException {
+    void update(String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
         Throwable exception
         try {
-            ldapTemplate.rebind(buildDnName(dn), null, buildAttributes(newAttributeMap))
+            Map<String, Object> attrsToBind
+            if (keepExistingAttributes) {
+                attrsToBind = new LinkedHashMap<String, Object>(oldAttributeMap)
+                attrsToBind.putAll(newAttributeMap)
+            } else {
+                attrsToBind = newAttributeMap
+            }
+            ldapTemplate.rebind(buildDnName(dn), null, buildAttributes(attrsToBind))
         }
         catch (Throwable t) {
             exception = t
@@ -105,9 +112,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(dn, oldAttributeMap, newAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(dn, oldAttributeMap, newAttributeMap) }
+                updateEventCallbacks.each { it.success(oldDn, oldAttributeMap, dn, newAttributeMap) }
             }
         }
     }
@@ -182,13 +189,17 @@ class LdapConnector implements Connector {
         if (existingEntry) {
             // Already exists -- update
 
+            String existingDn = existingEntry.dn
+            // Remove the dn from the object -- not an actual attribute
+            existingEntry.remove("dn")
+
             // Check for need to move DNs
-            if (existingEntry.dn != dn) {
+            if (existingDn != dn) {
                 // Move DN
-                rename(existingEntry.dn.toString(), dn)
+                rename(existingDn, dn)
             }
 
-            update(dn, existingEntry, jsonObject)
+            update(existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
         } else {
             // Doesn't already exist -- create
             insert(dn, jsonObject)
@@ -214,8 +225,10 @@ class LdapConnector implements Connector {
                 attrs.put(attr)
             } else if (entry.value instanceof String || entry.value instanceof Number || entry.value instanceof Boolean) {
                 attrs.put(entry.key, entry.value)
+            } else if (entry.value == null) {
+                attrs.remove(entry.key)
             } else {
-                throw new RuntimeException("Type ${entry.value.getClass().name} for key ${entry.key} is not a recognized list, string, number or boolean type")
+                throw new RuntimeException("Type ${entry.value.getClass().name} for key ${entry.key} is not a recognized list, string, number, boolean or null type")
             }
         }
         return attrs

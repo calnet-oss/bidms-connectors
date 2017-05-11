@@ -32,6 +32,10 @@ import org.springframework.ldap.query.LdapQuery
 
 interface LdapObjectDefinition extends ObjectDefinition {
     String getPrimaryKeyAttributeName()
+
     LdapQuery getLdapQueryForPrimaryKey(String pkey)
+
     boolean acceptAsExistingDn(String dn)
+
+    boolean keepExistingAttributesWhenUpdating()
 }

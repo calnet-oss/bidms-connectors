@@ -42,8 +42,11 @@ class UidObjectDefinition implements LdapObjectDefinition {
      */
     String objectClass
 
-    UidObjectDefinition(String objectClass) {
+    boolean keepExistingAttributesWhenUpdating
+
+    UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating) {
         this.objectClass = objectClass
+        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating
     }
 
     @Override
@@ -66,5 +69,10 @@ class UidObjectDefinition implements LdapObjectDefinition {
         // So these are never a "primary" entry and should always be
         // removed.
         return !dn.startsWith("entryuuid=")
+    }
+
+    @Override
+    boolean keepExistingAttributesWhenUpdating() {
+        return keepExistingAttributesWhenUpdating
     }
 }

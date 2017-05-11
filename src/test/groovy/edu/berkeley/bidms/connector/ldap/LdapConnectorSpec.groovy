@@ -54,7 +54,7 @@ class LdapConnectorSpec extends Specification {
     LdapTemplate ldapTemplate
 
     @Shared
-    UidObjectDefinition uidObjectDef = new UidObjectDefinition("person")
+    UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true)
 
     LdapInsertEventCallback insertEventCallback = Mock(LdapInsertEventCallback)
     LdapUpdateEventCallback updateEventCallback = Mock(LdapUpdateEventCallback)
@@ -136,6 +136,49 @@ class LdapConnectorSpec extends Specification {
     }
 
     @Unroll("#description")
+    void "test keepExistingAttributesWhenUpdating"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating)
+        when:
+        addOu("people")
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        String uid = "1"
+        // create
+        ldapConnector.persist(objDef, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: ["top", "person", "inetOrgPerson"],
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ])
+        // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
+        ldapConnector.persist(objDef, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: ["top", "person", "inetOrgPerson"],
+                sn         : "User",
+                cn         : "Test User"
+        ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]))
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        retrieved.size() == 1
+        retrieved.first().description == expectedDescription
+
+        where:
+        description                                                                      | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | expectedDescription
+        "keepExistingAttributesWhenUpdating=true"                                        | true                               | null           | false           | "initial test"
+        "keepExistingAttributesWhenUpdating=false"                                       | false                              | null           | false           | null
+        "keepExistingAttributesWhenUpdating=true, update existing attr"                  | true                               | "updated"      | false           | "updated"
+        "keepExistingAttributesWhenUpdating=true, remove existing attr by explicit null" | true                               | null           | true            | null
+    }
+
+    @Unroll("#description")
     void "test LdapConnector persistence"() {
         when:
         addOu("people")
@@ -173,7 +216,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         deletes * deleteEventCallback.success(_)
         renames * renameEventCallback.success(_, _)
-        updates * updateEventCallback.success(_, _, _)
+        updates * updateEventCallback.success(_, _, _, _)
         inserts * insertEventCallback.success(_, _)
 
         where:
