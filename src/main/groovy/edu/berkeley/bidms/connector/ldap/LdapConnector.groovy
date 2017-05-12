@@ -251,8 +251,6 @@ class LdapConnector implements Connector {
             // Doesn't already exist -- create
             insert(eventId, pkey, dn, jsonObject)
         }
-
-        return true
     }
 
     @SuppressWarnings("GrMethodMayBeStatic")

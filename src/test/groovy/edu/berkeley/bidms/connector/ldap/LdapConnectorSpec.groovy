@@ -194,7 +194,7 @@ class LdapConnectorSpec extends Specification {
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
         String eventId = "eventId"
-        boolean result = ldapConnector.persist(eventId, uidObjectDef, [
+        ldapConnector.persist(eventId, uidObjectDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson"],
@@ -212,7 +212,6 @@ class LdapConnectorSpec extends Specification {
         deleteOu("the middle")
 
         then:
-        result
         retrieved.size() == 1
         retrieved.first().dn == dn
         retrieved.first().description == "updated"
