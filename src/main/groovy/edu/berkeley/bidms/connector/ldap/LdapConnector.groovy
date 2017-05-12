@@ -49,7 +49,7 @@ class LdapConnector implements Connector {
 
     LdapTemplate ldapTemplate
     ContextMapper<DirContextAdapter> toDirContextAdapterContextMapper = new ToDirContextAdapterContextMapper()
-    ContextMapper<Map<String, Object>> _toMapContextMapper = new ToMapContextMapper()
+    ContextMapper<Map<String, Object>> toMapContextMapper = new ToMapContextMapper()
 
     List<LdapDeleteEventCallback> deleteEventCallbacks = []
     List<LdapRenameEventCallback> renameEventCallbacks = []
@@ -111,7 +111,7 @@ class LdapConnector implements Connector {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
         try {
-            oldAttributeMap = _toMapContextMapper.mapFromContext(existingEntry)
+            oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
             Map<String, Object> attributesToKeepOrUpdate = (keepExistingAttributes ? new LinkedHashMap<String, Object>(oldAttributeMap) : newAttributeMap)
             if (keepExistingAttributes) {

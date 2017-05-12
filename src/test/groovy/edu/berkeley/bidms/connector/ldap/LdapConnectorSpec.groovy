@@ -132,7 +132,7 @@ class LdapConnectorSpec extends Specification {
         return ldapTemplate.search(query()
                 .where("objectClass").is("person")
                 .and("uid").is(uid),
-                ldapConnector._toMapContextMapper)
+                ldapConnector.toMapContextMapper)
     }
 
     @Unroll("#description")
