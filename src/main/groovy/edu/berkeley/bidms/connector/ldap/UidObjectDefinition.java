@@ -25,54 +25,84 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap
+package edu.berkeley.bidms.connector.ldap;
 
-import org.springframework.ldap.query.LdapQuery
-
-import static org.springframework.ldap.query.LdapQueryBuilder.query
+import org.springframework.ldap.query.LdapQuery;
+import org.springframework.ldap.query.LdapQueryBuilder;
 
 /**
  * An object definition for LDAP objects where the primary key is the uid
  * attribute.
  */
-class UidObjectDefinition implements LdapObjectDefinition {
+public class UidObjectDefinition implements LdapObjectDefinition {
     /**
      * The objectClass to filter by when searching for uids.
      * The "person" objectClass would be a typical example.
      */
-    String objectClass
+    private String objectClass;
 
-    boolean keepExistingAttributesWhenUpdating
+    /**
+     * If true, when updating, the existing attributes that aren't in the
+     * update map will be kept instead of removed.
+     */
+    private boolean keepExistingAttributesWhenUpdating;
 
-    UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating) {
-        this.objectClass = objectClass
-        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating
+    public UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating) {
+        this.objectClass = objectClass;
+        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
     }
 
     @Override
-    String getPrimaryKeyAttributeName() {
-        return "uid"
+    public String getPrimaryKeyAttributeName() {
+        return "uid";
     }
 
     @Override
-    LdapQuery getLdapQueryForPrimaryKey(String uid) {
-        return query()
-                .where("objectClass").is(objectClass)
-                .and("uid").is(uid)
+    public LdapQuery getLdapQueryForPrimaryKey(String uid) {
+        /*
+        LdapQuery foo = query()
+        ConditionCriteria foo2 = foo.where("objectClass")
+        foo = foo2.is(objectClass)
+        foo2 = foo.and("uid")
+        foo = foo2.is(uid)
+        return foo
+        */
+        return LdapQueryBuilder.query().where("objectClass").is(objectClass).and("uid").is(uid);
+
     }
 
     @Override
-    boolean acceptAsExistingDn(String dn) {
+    public boolean acceptAsExistingDn(String dn) {
         // We disregard "entryuuid" entries because of a bug in OpenDJ that
         // creates these during replication.  Whenever an "entryuuid" entry
         // exists, it's a duplicate of another entry that has a proper DN. 
         // So these are never a "primary" entry and should always be
         // removed.
-        return !dn.startsWith("entryuuid=")
+        return !dn.startsWith("entryuuid=");
     }
 
     @Override
-    boolean keepExistingAttributesWhenUpdating() {
-        return keepExistingAttributesWhenUpdating
+    public boolean keepExistingAttributesWhenUpdating() {
+        return keepExistingAttributesWhenUpdating;
+    }
+
+    public String getObjectClass() {
+        return objectClass;
+    }
+
+    public void setObjectClass(String objectClass) {
+        this.objectClass = objectClass;
+    }
+
+    public boolean getKeepExistingAttributesWhenUpdating() {
+        return keepExistingAttributesWhenUpdating;
+    }
+
+    public boolean isKeepExistingAttributesWhenUpdating() {
+        return keepExistingAttributesWhenUpdating;
+    }
+
+    public void setKeepExistingAttributesWhenUpdating(boolean keepExistingAttributesWhenUpdating) {
+        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
     }
 }

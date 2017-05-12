@@ -25,17 +25,17 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap
+package edu.berkeley.bidms.connector.ldap;
 
-import edu.berkeley.bidms.connector.ObjectDefinition
-import org.springframework.ldap.query.LdapQuery
+import edu.berkeley.bidms.connector.ObjectDefinition;
+import org.springframework.ldap.query.LdapQuery;
 
-interface LdapObjectDefinition extends ObjectDefinition {
-    String getPrimaryKeyAttributeName()
+public interface LdapObjectDefinition extends ObjectDefinition {
+    String getPrimaryKeyAttributeName();
 
-    LdapQuery getLdapQueryForPrimaryKey(String pkey)
+    LdapQuery getLdapQueryForPrimaryKey(String pkey);
 
-    boolean acceptAsExistingDn(String dn)
+    boolean acceptAsExistingDn(String dn);
 
-    boolean keepExistingAttributesWhenUpdating()
+    boolean keepExistingAttributesWhenUpdating();
 }

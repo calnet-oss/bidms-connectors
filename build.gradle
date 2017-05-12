@@ -1,4 +1,4 @@
-version "0.3-SNAPSHOT"
+version "0.4-SNAPSHOT"
 group "edu.berkeley.calnet.groovy.libs"
 
 apply plugin: "groovy"
@@ -31,6 +31,7 @@ jar {
 
 task sourceJar(type: Jar) {
     from sourceSets.main.allGroovy
+    from sourceSets.main.allJava
     from { ["LICENSE.txt", "NOTICE_THIRD_PARTY.txt"] }
 }
 

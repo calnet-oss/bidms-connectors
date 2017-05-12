@@ -25,8 +25,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector
+package edu.berkeley.bidms.connector;
 
-interface ObjectDefinition {
-
+public interface ObjectDefinition {
 }
