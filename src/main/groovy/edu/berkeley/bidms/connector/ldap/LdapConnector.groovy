@@ -224,7 +224,8 @@ class LdapConnector implements Connector {
                 }
                 attrs.put(attr)
             } else if (entry.value instanceof String || entry.value instanceof Number || entry.value instanceof Boolean) {
-                attrs.put(entry.key, entry.value)
+                // Directory servers interpret numbers and booleans as strings, so we use toString()
+                attrs.put(entry.key, entry.value?.toString())
             } else if (entry.value == null) {
                 attrs.remove(entry.key)
             } else {
