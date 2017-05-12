@@ -132,7 +132,7 @@ class LdapConnectorSpec extends Specification {
         return ldapTemplate.search(query()
                 .where("objectClass").is("person")
                 .and("uid").is(uid),
-                ldapConnector.toMapContextMapper)
+                ldapConnector._toMapContextMapper)
     }
 
     @Unroll("#description")
@@ -148,7 +148,7 @@ class LdapConnectorSpec extends Specification {
         ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson"],
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User",
                 description: "initial test"
@@ -157,7 +157,7 @@ class LdapConnectorSpec extends Specification {
         ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson"],
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User"
         ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]))
@@ -218,7 +218,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         deletes * deleteEventCallback.success("eventId", uid, _)
         renames * renameEventCallback.success("eventId", uid, _, _)
-        updates * updateEventCallback.success("eventId", uid, _, _, _, _)
+        updates * updateEventCallback.success("eventId", uid, _, _, _)
         inserts * insertEventCallback.success("eventId", uid, _, _)
 
         where:

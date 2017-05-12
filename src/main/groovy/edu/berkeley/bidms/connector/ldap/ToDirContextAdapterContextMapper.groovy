@@ -25,10 +25,24 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap
 
-interface LdapUpdateEventCallback extends LdapEventCallback {
-    void success(String eventId, String pkey, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes)
+import org.springframework.ldap.core.ContextMapper
+import org.springframework.ldap.core.DirContextAdapter
 
-    void failure(String eventId, String pkey, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes, Throwable exception)
+import javax.naming.NamingException
+import javax.naming.directory.Attribute
+
+/**
+ * Returns the search result entry as a DirContextAdapter.
+ */
+class ToDirContextAdapterContextMapper implements ContextMapper<DirContextAdapter> {
+    @Override
+    DirContextAdapter mapFromContext(Object ctx) throws NamingException {
+        if (ctx instanceof DirContextAdapter) {
+            return (DirContextAdapter) ctx
+        } else {
+            throw new RuntimeException("Not supported for ctx type ${ctx?.getClass()?.name}.  Only DirContextAdapter objects are supported.")
+        }
+    }
 }

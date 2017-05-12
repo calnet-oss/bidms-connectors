@@ -35,6 +35,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.core.ContextMapper
+import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.support.LdapNameBuilder
 
@@ -47,15 +48,20 @@ import javax.naming.directory.BasicAttributes
 class LdapConnector implements Connector {
 
     LdapTemplate ldapTemplate
-    ContextMapper<Map<String, Object>> toMapContextMapper = new ToMapContextMapper()
+    ContextMapper<DirContextAdapter> toDirContextAdapterContextMapper = new ToDirContextAdapterContextMapper()
+    ContextMapper<Map<String, Object>> _toMapContextMapper = new ToMapContextMapper()
 
     List<LdapDeleteEventCallback> deleteEventCallbacks = []
     List<LdapRenameEventCallback> renameEventCallbacks = []
     List<LdapUpdateEventCallback> updateEventCallbacks = []
     List<LdapInsertEventCallback> insertEventCallbacks = []
 
-    List<Map<String, Object>> search(String eventId, LdapObjectDefinition objectDef, String pkey) {
-        return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toMapContextMapper)
+    List<DirContextAdapter> search(String eventId, LdapObjectDefinition objectDef, String pkey) {
+        return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
+    }
+
+    DirContextAdapter lookup(String eventId, String dn) {
+        return (DirContextAdapter) ldapTemplate.lookup(buildDnName(dn))
     }
 
     void delete(String eventId, String pkey, String dn) throws LdapConnectorException {
@@ -94,17 +100,39 @@ class LdapConnector implements Connector {
         }
     }
 
-    void update(String eventId, String pkey, String oldDn, Map<String, Object> oldAttributeMap, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
+    /**
+     * Update an existing LDAP object with values in newAttributeMap.
+     *
+     * Attribute names in the newAttributeMap are case sensitive.  Attribute
+     * strings must match the case of the attribute names of the directory
+     * schema, as retrieved from the directory via a search() or lookup().
+     */
+    void update(String eventId, String pkey, DirContextAdapter existingEntry, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
         Throwable exception
+        Map<String, Object> oldAttributeMap = null
         try {
-            Map<String, Object> attrsToBind
+            oldAttributeMap = _toMapContextMapper.mapFromContext(existingEntry)
+            oldAttributeMap.remove("dn")
+            Map<String, Object> attributesToKeepOrUpdate = (keepExistingAttributes ? new LinkedHashMap<String, Object>(oldAttributeMap) : newAttributeMap)
             if (keepExistingAttributes) {
-                attrsToBind = new LinkedHashMap<String, Object>(oldAttributeMap)
-                attrsToBind.putAll(newAttributeMap)
-            } else {
-                attrsToBind = newAttributeMap
+                attributesToKeepOrUpdate.putAll(newAttributeMap)
             }
-            ldapTemplate.rebind(buildDnName(dn), null, buildAttributes(attrsToBind))
+            Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
+            Collection<String> attributesToRemove = (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : null)
+
+            attributesToRemove?.each { String attrName ->
+                existingEntry.setAttributeValues(attrName, null)
+            }
+
+            changedAttributes.each { Map.Entry<String, Object> entry ->
+                if (entry.value instanceof Collection) {
+                    existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
+                } else {
+                    existingEntry.setAttributeValues(entry.key, [entry.value] as Object[])
+                }
+            }
+
+            ldapTemplate.modifyAttributes(existingEntry)
         }
         catch (Throwable t) {
             exception = t
@@ -112,9 +140,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, pkey, oldDn, oldAttributeMap, dn, newAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, newAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, pkey, oldDn, oldAttributeMap, dn, newAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, newAttributeMap) }
             }
         }
     }
@@ -138,53 +166,63 @@ class LdapConnector implements Connector {
     }
 
     /**
+     * Persist the values in jsonObject to LDAP.
+     *
+     * Attribute names in the newAttributeMap are case sensitive.  Attribute
+     * strings must match the case of the attribute names in the directory
+     * schema, as when retrieved from the directory via a search() or
+     * lookup().
+     *
      * @param objectDef Object definition of the LDAP object
-     * @param jsonObject The objJson extracted from a LDAP DownstreamObject
-     * @return true if the object was successfully persisted to LDAP.  false indicates an error.
+     * @param jsonObject The objJson extracted from a LDAP DownstreamObject. 
+     *        Keys are case sensitive and must match the case of the
+     *        attribute names in the directory schema.
+     * @return true if the object was successfully persisted to LDAP.  false
+     *         indicates an error.
      */
     @Override
-    boolean persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
+    void persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = jsonObject[pkeyAttrName]
-        if(!pkey) {
-            log.warn("LDAP object is missing a required value for primary key $pkeyAttrName")
-            return false
+        if (!pkey) {
+            throw new LdapConnectorException("LDAP object is missing a required value for primary key $pkeyAttrName")
         }
         String dn = jsonObject.dn
         if (!dn) {
-            log.warn("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
-            return false
+            throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
         }
         // Remove the dn from the object -- not an actual attribute
         jsonObject.remove("dn")
 
-        log.debug("Persisting $pkeyAttrName $pkey, dn $dn")
-
-        // Spring method naming is a little confusing.
-        // Spring uses the word "bind" and "rebind" to mean "create" and "update."
-        // In this context, it does not mean "authenticate (bind) to the LDAP server."
+        // Spring method naming is a little confusing.  Spring uses the word
+        // "bind" and "rebind" to mean "create" and "update." In this
+        // context, it does not mean "authenticate (bind) to the LDAP
+        // server."
 
         // See if the record already exists
-        List<Map<String, Object>> searchResults = search(eventId, (LdapObjectDefinition) objectDef, pkey)
+        List<DirContextAdapter> searchResults = search(eventId, (LdapObjectDefinition) objectDef, pkey)
 
         //
-        // There's only supposed to be one entry-per-pkey in the directory, but this is not guaranteed to always be the case.
-        // When the search returns more than one entry, first see if there's any one that already matches the DN of our downstream object.
-        // If none match, pick one to rename and delete the rest.
+        // There's only supposed to be one entry-per-pkey in the directory,
+        // but this is not guaranteed to always be the case.  When the
+        // search returns more than one entry, first see if there's any one
+        // that already matches the DN of our downstream object.  If none
+        // match, pick one to rename and delete the rest.
         //
 
-        Map<String, Object> existingEntry = searchResults?.find { Map<String, Object> entry ->
-            entry.dn == dn
+        DirContextAdapter existingEntry = searchResults?.find { DirContextAdapter entry ->
+            entry.dn.toString() == dn
         }
         if (!existingEntry && searchResults.size() > 0) {
-            // None match the DN, so use the first one that matches a filter criteria
-            existingEntry = searchResults.find { Map<String, Object> entry ->
+            // None match the DN, so use the first one that matches a filter
+            // criteria
+            existingEntry = searchResults.find { DirContextAdapter entry ->
                 ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
             }
         }
 
         // Delete all the entries that we're not keeping as the existingEntry
-        searchResults.each { Map<String, Object> entry ->
+        searchResults.each { DirContextAdapter entry ->
             if (entry.dn != existingEntry?.dn) {
                 delete(eventId, pkey, entry.dn.toString())
             }
@@ -194,16 +232,21 @@ class LdapConnector implements Connector {
             // Already exists -- update
 
             String existingDn = existingEntry.dn
-            // Remove the dn from the object -- not an actual attribute
-            existingEntry.remove("dn")
 
             // Check for need to move DNs
             if (existingDn != dn) {
                 // Move DN
                 rename(eventId, pkey, existingDn, dn)
+                existingEntry = lookup(eventId, dn)
+                if (!existingEntry) {
+                    throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
+                }
             }
 
-            update(eventId, pkey, existingDn, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+            if (!existingEntry.updateMode) {
+                existingEntry.updateMode = true
+            }
+            update(eventId, pkey, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
         } else {
             // Doesn't already exist -- create
             insert(eventId, pkey, dn, jsonObject)
@@ -228,7 +271,8 @@ class LdapConnector implements Connector {
                 }
                 attrs.put(attr)
             } else if (entry.value instanceof String || entry.value instanceof Number || entry.value instanceof Boolean) {
-                // Directory servers interpret numbers and booleans as strings, so we use toString()
+                // Directory servers interpret numbers and booleans as
+                // strings, so we use toString()
                 attrs.put(entry.key, entry.value?.toString())
             } else if (entry.value == null) {
                 attrs.remove(entry.key)
