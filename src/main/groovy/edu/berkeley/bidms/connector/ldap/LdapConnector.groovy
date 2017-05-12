@@ -146,9 +146,13 @@ class LdapConnector implements Connector {
     boolean persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = jsonObject[pkeyAttrName]
+        if(!pkey) {
+            log.warn("LDAP object is missing a required value for primary key $pkeyAttrName")
+            return false
+        }
         String dn = jsonObject.dn
         if (!dn) {
-            log.warn("Downstream LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
+            log.warn("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
             return false
         }
         // Remove the dn from the object -- not an actual attribute
