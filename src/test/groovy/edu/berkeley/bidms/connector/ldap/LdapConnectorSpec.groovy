@@ -197,10 +197,10 @@ class LdapConnectorSpec extends Specification {
         ldapConnector.persist(eventId, uidObjectDef, [
                 dn         : dn,
                 uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson"],
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User",
-                description: "updated"
+                description: ["updated"]
         ])
 
         List<Map<String, Object>> retrieved = searchForUid(uid)

@@ -40,6 +40,7 @@ import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.support.LdapNameBuilder
 
 import javax.naming.Name
+import javax.naming.directory.Attribute
 import javax.naming.directory.Attributes
 import javax.naming.directory.BasicAttribute
 import javax.naming.directory.BasicAttributes
@@ -113,24 +114,45 @@ class LdapConnector implements Connector {
         try {
             oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
-            Map<String, Object> attributesToKeepOrUpdate = (keepExistingAttributes ? new LinkedHashMap<String, Object>(oldAttributeMap) : newAttributeMap)
+            Map<String, Object> attributesToKeepOrUpdate = (keepExistingAttributes ? new LinkedHashMap<String, Object>(oldAttributeMap) : convertCallerProvidedMap(newAttributeMap))
             if (keepExistingAttributes) {
-                attributesToKeepOrUpdate.putAll(newAttributeMap)
+                attributesToKeepOrUpdate.putAll(convertCallerProvidedMap(newAttributeMap))
             }
+            //log.debug("attributesToKeepOrUpdate = ${attributesToKeepOrUpdate}")
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
-            Collection<String> attributesToRemove = (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : null)
 
-            attributesToRemove?.each { String attrName ->
-                existingEntry.setAttributeValues(attrName, null)
+            // Removing the attribute if keepExistingAttributes is false and the attribute is not in the newAttributeMap
+            // or if the attribute is explicitly set to null in the newAttributeMap.
+            HashSet<String> attributeNamesToRemove = (
+                    (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
+            ) + (
+                    (newAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
+            )
+
+            Collection<Attribute> attributesToRemove = existingEntry.attributes.all.findAll { Attribute attr ->
+                attr.ID in attributeNamesToRemove
+            }
+
+            attributesToRemove.each { Attribute attr ->
+                attr.all.each { value ->
+                    existingEntry.removeAttributeValue(attr.ID, value)
+                }
             }
 
             changedAttributes.each { Map.Entry<String, Object> entry ->
+                //log.debug("${entry.key} OLD=${oldAttributeMap[entry.key]} NEW=${entry.value}")
                 if (entry.value instanceof Collection) {
                     existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
-                } else {
+                } else if (entry.value) {
                     existingEntry.setAttributeValues(entry.key, [entry.value] as Object[])
                 }
             }
+
+            /*
+            log.debug("attributeNamesToRemove: ${attributeNamesToRemove}")
+            log.debug("modifications: ${existingEntry.modificationItems}")
+            log.debug("changesAttributes: ${changedAttributes}")
+            */
 
             ldapTemplate.modifyAttributes(existingEntry)
         }
@@ -279,5 +301,19 @@ class LdapConnector implements Connector {
             }
         }
         return attrs
+    }
+
+    private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
+        return map.findAll { it.value != null }.collectEntries {
+            [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : it.value)]
+        }
+    }
+
+    private Object convertCallerProvidedList(List list) {
+        if (list.size() == 1) {
+            return list.first()
+        } else {
+            return list
+        }
     }
 }
