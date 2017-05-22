@@ -203,75 +203,83 @@ class LdapConnector implements Connector {
      *         indicates an error.
      */
     @Override
-    void persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject) throws LdapConnectorException {
+    void persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject, boolean isDelete) throws LdapConnectorException {
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = jsonObject[pkeyAttrName]
         if (!pkey) {
             throw new LdapConnectorException("LDAP object is missing a required value for primary key $pkeyAttrName")
         }
-        String dn = jsonObject.dn
-        if (!dn) {
-            throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
-        }
-        // Remove the dn from the object -- not an actual attribute
-        jsonObject.remove("dn")
 
         // Spring method naming is a little confusing.  Spring uses the word
         // "bind" and "rebind" to mean "create" and "update." In this
         // context, it does not mean "authenticate (bind) to the LDAP
         // server."
 
-        // See if the record already exists
+        // See if records belonging to the pkey exist
         List<DirContextAdapter> searchResults = search(eventId, (LdapObjectDefinition) objectDef, pkey)
 
-        //
-        // There's only supposed to be one entry-per-pkey in the directory,
-        // but this is not guaranteed to always be the case.  When the
-        // search returns more than one entry, first see if there's any one
-        // that already matches the DN of our downstream object.  If none
-        // match, pick one to rename and delete the rest.
-        //
-
-        DirContextAdapter existingEntry = searchResults?.find { DirContextAdapter entry ->
-            entry.dn.toString() == dn
-        }
-        if (!existingEntry && searchResults.size() > 0) {
-            // None match the DN, so use the first one that matches a filter
-            // criteria
-            existingEntry = searchResults.find { DirContextAdapter entry ->
-                ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
+        if (!isDelete) {
+            String dn = jsonObject.dn
+            if (!dn) {
+                throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
             }
-        }
+            // Remove the dn from the object -- not an actual attribute
+            jsonObject.remove("dn")
 
-        // Delete all the entries that we're not keeping as the existingEntry
-        searchResults.each { DirContextAdapter entry ->
-            if (entry.dn != existingEntry?.dn) {
-                delete(eventId, pkey, entry.dn.toString())
+            //
+            // There's only supposed to be one entry-per-pkey in the directory,
+            // but this is not guaranteed to always be the case.  When the
+            // search returns more than one entry, first see if there's any one
+            // that already matches the DN of our downstream object.  If none
+            // match, pick one to rename and delete the rest.
+            //
+
+            DirContextAdapter existingEntry = searchResults?.find { DirContextAdapter entry ->
+                entry.dn.toString() == dn
             }
-        }
-
-        if (existingEntry) {
-            // Already exists -- update
-
-            String existingDn = existingEntry.dn
-
-            // Check for need to move DNs
-            if (existingDn != dn) {
-                // Move DN
-                rename(eventId, pkey, existingDn, dn)
-                existingEntry = lookup(eventId, dn)
-                if (!existingEntry) {
-                    throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
+            if (!existingEntry && searchResults.size() > 0) {
+                // None match the DN, so use the first one that matches a filter
+                // criteria
+                existingEntry = searchResults.find { DirContextAdapter entry ->
+                    ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
                 }
             }
 
-            if (!existingEntry.updateMode) {
-                existingEntry.updateMode = true
+            // Delete all the entries that we're not keeping as the existingEntry
+            searchResults.each { DirContextAdapter entry ->
+                if (entry.dn != existingEntry?.dn) {
+                    delete(eventId, pkey, entry.dn.toString())
+                }
             }
-            update(eventId, pkey, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+
+            if (existingEntry) {
+                // Already exists -- update
+
+                String existingDn = existingEntry.dn
+
+                // Check for need to move DNs
+                if (existingDn != dn) {
+                    // Move DN
+                    rename(eventId, pkey, existingDn, dn)
+                    existingEntry = lookup(eventId, dn)
+                    if (!existingEntry) {
+                        throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
+                    }
+                }
+
+                if (!existingEntry.updateMode) {
+                    existingEntry.updateMode = true
+                }
+                update(eventId, pkey, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+            } else {
+                // Doesn't already exist -- create
+                insert(eventId, pkey, dn, jsonObject)
+            }
         } else {
-            // Doesn't already exist -- create
-            insert(eventId, pkey, dn, jsonObject)
+            // is a deletion for the pkey
+            searchResults.each { DirContextAdapter entry ->
+                delete(eventId, pkey, entry.dn.toString())
+            }
         }
     }
 

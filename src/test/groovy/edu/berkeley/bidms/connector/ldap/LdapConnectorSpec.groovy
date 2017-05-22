@@ -152,7 +152,7 @@ class LdapConnectorSpec extends Specification {
                 sn         : "User",
                 cn         : "Test User",
                 description: "initial test"
-        ])
+        ], false)
         // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
         ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
@@ -160,7 +160,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User"
-        ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]))
+        ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]), false)
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
         and: "cleanup"
@@ -201,31 +201,36 @@ class LdapConnectorSpec extends Specification {
                 sn         : "User",
                 cn         : "Test User",
                 description: ["updated"]
-        ])
+        ], doDelete)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
         and: "cleanup"
-        deleteDn(dn)
+        if (!doDelete) {
+            // if the doDelete flag is set, that means we already deleted it
+            deleteDn(dn)
+        }
         deleteOu("people")
         deleteOu("expired people")
         deleteOu("the middle")
 
         then:
-        retrieved.size() == 1
-        retrieved.first().dn == dn
-        retrieved.first().description == "updated"
+        retrieved.size() == (!doDelete ? 1 : 0)
+        (!doDelete ? retrieved.first().dn : null) == (!doDelete ? dn : null)
+        (!doDelete ? retrieved.first().description : null) == (!doDelete ? "updated" : null)
         deletes * deleteEventCallback.success("eventId", uid, _)
         renames * renameEventCallback.success("eventId", uid, _, _)
         updates * updateEventCallback.success("eventId", uid, _, _, _)
         inserts * insertEventCallback.success("eventId", uid, _, _)
 
         where:
-        description                                                | createFirst | createDupe | uid | dn                                           | deletes | renames | updates | inserts
-        "test creation"                                            | false       | false      | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1
-        "test update"                                              | true        | false      | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0
-        "test rename"                                              | true        | false      | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0
-        "test update and remove nonmatching dupe"                  | true        | true       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0
-        "test update with two dupes, rename one, delete the other" | true        | true       | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0
+        description                                                | createFirst | createDupe | doDelete | uid | dn                                           | deletes | renames | updates | inserts
+        "test creation"                                            | false       | false      | false    | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1
+        "test update"                                              | true        | false      | false    | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0
+        "test rename"                                              | true        | false      | false    | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0
+        "test update and remove nonmatching dupe"                  | true        | true       | false    | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0
+        "test update with two dupes, rename one, delete the other" | true        | true       | false    | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0
+        "test delete"                                              | true        | false      | true     | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0
+        "test multi-delete"                                        | true        | true       | true     | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0
     }
 }
