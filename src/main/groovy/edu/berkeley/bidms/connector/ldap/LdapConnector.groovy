@@ -121,8 +121,9 @@ class LdapConnector implements Connector {
             //log.debug("attributesToKeepOrUpdate = ${attributesToKeepOrUpdate}")
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
 
-            // Removing the attribute if keepExistingAttributes is false and the attribute is not in the newAttributeMap
-            // or if the attribute is explicitly set to null in the newAttributeMap.
+            // Removing the attribute if keepExistingAttributes is false and
+            // the attribute is not in the newAttributeMap or if the
+            // attribute is explicitly set to null in the newAttributeMap.
             HashSet<String> attributeNamesToRemove = (
                     (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
             ) + (
@@ -227,28 +228,32 @@ class LdapConnector implements Connector {
             jsonObject.remove("dn")
 
             //
-            // There's only supposed to be one entry-per-pkey in the directory,
-            // but this is not guaranteed to always be the case.  When the
-            // search returns more than one entry, first see if there's any one
-            // that already matches the DN of our downstream object.  If none
-            // match, pick one to rename and delete the rest.
+            // There's only supposed to be one entry-per-pkey in the
+            // directory, but this is not guaranteed to always be the case. 
+            // When the search returns more than one entry, first see if
+            // there's any one that already matches the DN of our downstream
+            // object.  If none match and removeDuplicatePrimaryKeys()
+            // returns true, pick one to rename and delete the rest.
             //
 
             DirContextAdapter existingEntry = searchResults?.find { DirContextAdapter entry ->
                 entry.dn.toString() == dn
             }
             if (!existingEntry && searchResults.size() > 0) {
-                // None match the DN, so use the first one that matches a filter
-                // criteria
+                // None match the DN, so use the first one that matches a
+                // filter criteria
                 existingEntry = searchResults.find { DirContextAdapter entry ->
                     ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
                 }
             }
 
-            // Delete all the entries that we're not keeping as the existingEntry
-            searchResults.each { DirContextAdapter entry ->
-                if (entry.dn != existingEntry?.dn) {
-                    delete(eventId, pkey, entry.dn.toString())
+            if(((LdapObjectDefinition)objectDef).removeDuplicatePrimaryKeys()) {
+                // Delete all the entries that we're not keeping as the
+                // existingEntry
+                searchResults.each { DirContextAdapter entry ->
+                    if (entry.dn != existingEntry?.dn) {
+                        delete(eventId, pkey, entry.dn.toString())
+                    }
                 }
             }
 

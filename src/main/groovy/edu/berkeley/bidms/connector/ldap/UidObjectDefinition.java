@@ -47,9 +47,18 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     private boolean keepExistingAttributesWhenUpdating;
 
-    public UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating) {
+    /**
+     * If true then entires in the directory with the same primary key that
+     * aren't considered the primary entry will be removed.  The primary
+     * entry is decided by the first entry encountered where
+     * acceptAsExistingDn(dn) returns true.
+     */
+    private boolean removeDuplicatePrimaryKeys;
+
+    public UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating, boolean removeDuplicatePrimaryKeys) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
+        this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
     }
 
     @Override
@@ -59,14 +68,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
 
     @Override
     public LdapQuery getLdapQueryForPrimaryKey(String uid) {
-        /*
-        LdapQuery foo = query()
-        ConditionCriteria foo2 = foo.where("objectClass")
-        foo = foo2.is(objectClass)
-        foo2 = foo.and("uid")
-        foo = foo2.is(uid)
-        return foo
-        */
         return LdapQueryBuilder.query().where("objectClass").is(objectClass).and("uid").is(uid);
 
     }
@@ -86,6 +87,11 @@ public class UidObjectDefinition implements LdapObjectDefinition {
         return keepExistingAttributesWhenUpdating;
     }
 
+    @Override
+    public boolean removeDuplicatePrimaryKeys() {
+        return removeDuplicatePrimaryKeys;
+    }
+
     public String getObjectClass() {
         return objectClass;
     }
@@ -94,15 +100,19 @@ public class UidObjectDefinition implements LdapObjectDefinition {
         this.objectClass = objectClass;
     }
 
-    public boolean getKeepExistingAttributesWhenUpdating() {
-        return keepExistingAttributesWhenUpdating;
-    }
-
     public boolean isKeepExistingAttributesWhenUpdating() {
         return keepExistingAttributesWhenUpdating;
     }
 
     public void setKeepExistingAttributesWhenUpdating(boolean keepExistingAttributesWhenUpdating) {
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
+    }
+
+    public boolean isRemoveDuplicatePrimaryKeys() {
+        return removeDuplicatePrimaryKeys;
+    }
+
+    public void setRemoveDuplicatePrimaryKeys(boolean removeDuplicatePrimaryKeys) {
+        this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
     }
 }

@@ -38,4 +38,6 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     boolean acceptAsExistingDn(String dn);
 
     boolean keepExistingAttributesWhenUpdating();
+
+    boolean removeDuplicatePrimaryKeys();
 }
