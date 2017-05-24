@@ -293,11 +293,15 @@ class LdapConnector implements Connector {
         Attributes attrs = new BasicAttributes()
         attrMap.each { entry ->
             if (entry.value instanceof List) {
-                BasicAttribute attr = new BasicAttribute(entry.key)
-                entry.value.each {
-                    attr.add(it)
+                if (((List) entry.value).size()) {
+                    BasicAttribute attr = new BasicAttribute(entry.key)
+                    entry.value.each {
+                        attr.add(it)
+                    }
+                    attrs.put(attr)
+                } else {
+                    attrs.remove(entry.key)
                 }
-                attrs.put(attr)
             } else if (entry.value instanceof String || entry.value instanceof Number || entry.value instanceof Boolean) {
                 // Directory servers interpret numbers and booleans as
                 // strings, so we use toString()
@@ -312,7 +316,7 @@ class LdapConnector implements Connector {
     }
 
     private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
-        return map.findAll { it.value != null }.collectEntries {
+        return map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
             [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : it.value)]
         }
     }

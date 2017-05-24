@@ -200,6 +200,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User",
+                mail       : [],
                 description: ["updated"]
         ], doDelete)
 
