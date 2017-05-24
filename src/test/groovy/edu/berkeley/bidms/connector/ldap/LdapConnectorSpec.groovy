@@ -135,7 +135,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[])
 
         when:
         addOu("people")
@@ -149,7 +149,8 @@ class LdapConnectorSpec extends Specification {
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
                 cn         : "Test User",
-                description: "initial test"
+                description: "initial test",
+                mail       : ["test@berkeley.edu"]
         ], false)
         // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
         ldapConnector.persist(eventId, objDef, [
@@ -157,7 +158,8 @@ class LdapConnectorSpec extends Specification {
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
-                cn         : "Test User"
+                cn         : "Test User",
+                mail       : ["test2@berkeley.edu"]
         ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]), false)
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
@@ -168,19 +170,21 @@ class LdapConnectorSpec extends Specification {
         then:
         retrieved.size() == 1
         retrieved.first().description == expectedDescription
+        retrieved.first().mail == expectedMail
 
         where:
-        description                                                                      | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | expectedDescription
-        "keepExistingAttributesWhenUpdating=true"                                        | true                               | null           | false           | "initial test"
-        "keepExistingAttributesWhenUpdating=false"                                       | false                              | null           | false           | null
-        "keepExistingAttributesWhenUpdating=true, update existing attr"                  | true                               | "updated"      | false           | "updated"
-        "keepExistingAttributesWhenUpdating=true, remove existing attr by explicit null" | true                               | null           | true            | null
+        description                                                                               | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | appendAttrs | expectedDescription | expectedMail
+        "keepExistingAttributesWhenUpdating=true"                                                 | true                               | null           | false           | null        | "initial test"      | "test2@berkeley.edu"
+        "keepExistingAttributesWhenUpdating=false"                                                | false                              | null           | false           | null        | null                | "test2@berkeley.edu"
+        "keepExistingAttributesWhenUpdating=true, update existing description"                    | true                               | "updated"      | false           | null        | "updated"           | "test2@berkeley.edu"
+        "keepExistingAttributesWhenUpdating=true, update existing description and append to mail" | true                               | "updated"      | false           | ["mail"]    | "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
+        "keepExistingAttributesWhenUpdating=true, remove existing description by explicit null"   | true                               | null           | true            | null        | null                | "test2@berkeley.edu"
     }
 
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null)
 
         when:
         addOu("people")
@@ -206,7 +210,7 @@ class LdapConnectorSpec extends Specification {
         ], doDelete)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
-        Map<String,Object> foundDn = retrieved.find {
+        Map<String, Object> foundDn = retrieved.find {
             it.dn == dn
         }
 

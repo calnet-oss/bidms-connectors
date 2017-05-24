@@ -40,4 +40,6 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     boolean keepExistingAttributesWhenUpdating();
 
     boolean removeDuplicatePrimaryKeys();
+
+    String[] getAppendOnlyAttributeNames();
 }

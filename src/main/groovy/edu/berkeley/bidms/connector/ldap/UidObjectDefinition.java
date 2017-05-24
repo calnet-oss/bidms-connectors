@@ -55,10 +55,26 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     private boolean removeDuplicatePrimaryKeys;
 
-    public UidObjectDefinition(String objectClass, boolean keepExistingAttributesWhenUpdating, boolean removeDuplicatePrimaryKeys) {
+    /**
+     * A list of attribute names, which must be multi-value attributes, to
+     * append to rather than overwrite when updating. A common example would
+     * be objectClass.
+     */
+    private String[] appendOnlyAttributeNames;
+
+    public UidObjectDefinition() {
+    }
+
+    public UidObjectDefinition(
+            String objectClass,
+            boolean keepExistingAttributesWhenUpdating,
+            boolean removeDuplicatePrimaryKeys,
+            String[] appendOnlyAttributeNames
+    ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
+        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
     }
 
     @Override
@@ -114,5 +130,14 @@ public class UidObjectDefinition implements LdapObjectDefinition {
 
     public void setRemoveDuplicatePrimaryKeys(boolean removeDuplicatePrimaryKeys) {
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
+    }
+
+    @Override
+    public String[] getAppendOnlyAttributeNames() {
+        return appendOnlyAttributeNames;
+    }
+
+    public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
+        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
     }
 }

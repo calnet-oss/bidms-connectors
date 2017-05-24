@@ -104,20 +104,59 @@ class LdapConnector implements Connector {
     /**
      * Update an existing LDAP object with values in newAttributeMap.
      *
-     * Attribute names in the newAttributeMap are case sensitive.  Attribute
-     * strings must match the case of the attribute names of the directory
-     * schema, as retrieved from the directory via a search() or lookup().
+     * Attribute names in the newReplaceAttributeMap and
+     * newAppendOnlyAttributeMap are case sensitive.  Attribute strings must
+     * match the case of the attribute names of the directory schema, as
+     * retrieved from the directory via a search() or lookup().
      */
-    void update(String eventId, String pkey, DirContextAdapter existingEntry, String dn, Map<String, Object> newAttributeMap, boolean keepExistingAttributes) throws LdapConnectorException {
+    void update(
+            String eventId,
+            String pkey,
+            DirContextAdapter existingEntry,
+            String dn,
+            Map<String, Object> newReplaceAttributeMap,
+            Map<String, List<Object>> newAppendOnlyAttributeMap,
+            boolean keepExistingAttributes
+    ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
         try {
             oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
-            Map<String, Object> attributesToKeepOrUpdate = (keepExistingAttributes ? new LinkedHashMap<String, Object>(oldAttributeMap) : convertCallerProvidedMap(newAttributeMap))
+
+            Map<String, Object> convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
+            Map<String, Object> attributesToKeepOrUpdate
             if (keepExistingAttributes) {
-                attributesToKeepOrUpdate.putAll(convertCallerProvidedMap(newAttributeMap))
+                attributesToKeepOrUpdate = new LinkedHashMap<String, Object>(oldAttributeMap)
+                attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
+            } else {
+                attributesToKeepOrUpdate = convertedNewAttributeMap
             }
+
+            newAppendOnlyAttributeMap?.each {
+                if (attributesToKeepOrUpdate.containsKey(it.key)) {
+                    // append
+                    if (attributesToKeepOrUpdate[it.key] instanceof List) {
+                        // it's already a list -- append to the existing
+                        // list, but prevent duplicates
+                        HashSet set = new HashSet((List) attributesToKeepOrUpdate[it.key])
+                        set.addAll(it.value)
+                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
+                    } else {
+                        // it's a single value -- create a list containing
+                        // existing value plus new values, but prevent
+                        // duplicates
+                        HashSet set = new HashSet()
+                        set.add(attributesToKeepOrUpdate[it.key])
+                        set.addAll(it.value)
+                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
+                    }
+                } else {
+                    // insert
+                    attributesToKeepOrUpdate[it.key] = it.value
+                }
+            }
+
             //log.debug("attributesToKeepOrUpdate = ${attributesToKeepOrUpdate}")
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
 
@@ -127,7 +166,7 @@ class LdapConnector implements Connector {
             HashSet<String> attributeNamesToRemove = (
                     (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
             ) + (
-                    (newAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
+                    (newReplaceAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
             )
 
             Collection<Attribute> attributesToRemove = existingEntry.attributes.all.findAll { Attribute attr ->
@@ -163,9 +202,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, newAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, newReplaceAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, newAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, newReplaceAttributeMap) }
             }
         }
     }
@@ -247,7 +286,7 @@ class LdapConnector implements Connector {
                 }
             }
 
-            if(((LdapObjectDefinition)objectDef).removeDuplicatePrimaryKeys()) {
+            if (((LdapObjectDefinition) objectDef).removeDuplicatePrimaryKeys()) {
                 // Delete all the entries that we're not keeping as the
                 // existingEntry
                 searchResults.each { DirContextAdapter entry ->
@@ -272,10 +311,31 @@ class LdapConnector implements Connector {
                     }
                 }
 
+                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(jsonObject)
+                Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
+                ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
+                    if (newReplaceAttributeMap.containsKey(attrName)) {
+                        if (newReplaceAttributeMap[attrName] instanceof List) {
+                            newAppendOnlyAttributeMap[attrName] = (List) newReplaceAttributeMap[attrName]
+                        } else {
+                            newAppendOnlyAttributeMap[attrName] = [newReplaceAttributeMap[attrName]]
+                        }
+                        newReplaceAttributeMap.remove(attrName)
+                    }
+                }
+
                 if (!existingEntry.updateMode) {
                     existingEntry.updateMode = true
                 }
-                update(eventId, pkey, existingEntry, dn, jsonObject, ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating())
+                update(
+                        eventId,
+                        pkey,
+                        existingEntry,
+                        dn,
+                        newReplaceAttributeMap,
+                        newAppendOnlyAttributeMap,
+                        ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating()
+                )
             } else {
                 // Doesn't already exist -- create
                 insert(eventId, pkey, dn, jsonObject)
@@ -326,6 +386,7 @@ class LdapConnector implements Connector {
         }
     }
 
+    @SuppressWarnings("GrMethodMayBeStatic")
     private Object convertCallerProvidedList(List list) {
         if (list.size() == 1) {
             return list.first()
