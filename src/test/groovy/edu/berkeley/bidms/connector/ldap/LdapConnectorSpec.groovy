@@ -143,7 +143,7 @@ class LdapConnectorSpec extends Specification {
         String uid = "1"
         String eventId = "eventId"
         // create
-        ldapConnector.persist(eventId, objDef, [
+        boolean didCreate = ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
@@ -153,7 +153,7 @@ class LdapConnectorSpec extends Specification {
                 mail       : ["test@berkeley.edu"]
         ], false)
         // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
-        ldapConnector.persist(eventId, objDef, [
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
@@ -168,6 +168,8 @@ class LdapConnectorSpec extends Specification {
         deleteOu("people")
 
         then:
+        didCreate
+        didUpdate
         retrieved.size() == 1
         retrieved.first().description == expectedDescription
         retrieved.first().mail == expectedMail
@@ -199,7 +201,7 @@ class LdapConnectorSpec extends Specification {
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
         String eventId = "eventId"
-        ldapConnector.persist(eventId, uidObjectDef, [
+        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
@@ -227,6 +229,7 @@ class LdapConnectorSpec extends Specification {
         deleteOu("the middle")
 
         then:
+        isModified
         retrieved.size() == (!doDelete ? (createDupe && !removeDupes ? 2 : 1) : 0)
         (!doDelete ? foundDn.dn : null) == (!doDelete ? dn : null)
         (!doDelete ? foundDn.description : null) == (!doDelete ? "updated" : null)
@@ -245,5 +248,40 @@ class LdapConnectorSpec extends Specification {
         "test update with two dupes, rename one, delete the other" | true        | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0
         "test delete"                                              | true        | false      | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0
         "test multi-delete"                                        | true        | true       | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0
+    }
+
+    void "test persist return value on a non-modification"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+
+        when:
+        addOu("people")
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        String uid = "1"
+        String eventId = "eventId"
+        Map<String, Object> map = [
+                dn         : dn,
+                uid        : uid,
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ]
+        // create
+        boolean didCreate = ldapConnector.persist(eventId, objDef, map, false)
+        // update with same data such that no modification should occur
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, map, false)
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didCreate
+        // no actual modification should have happened
+        !didUpdate
+        retrieved.size() == 1
+        retrieved.first().description == "initial test"
     }
 }

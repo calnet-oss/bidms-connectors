@@ -108,8 +108,10 @@ class LdapConnector implements Connector {
      * newAppendOnlyAttributeMap are case sensitive.  Attribute strings must
      * match the case of the attribute names of the directory schema, as
      * retrieved from the directory via a search() or lookup().
+     *
+     * @return true if a modification occurred
      */
-    void update(
+    boolean update(
             String eventId,
             String pkey,
             DirContextAdapter existingEntry,
@@ -194,7 +196,9 @@ class LdapConnector implements Connector {
             log.debug("changesAttributes: ${changedAttributes}")
             */
 
+            boolean isModified = existingEntry.modificationItems.size()
             ldapTemplate.modifyAttributes(existingEntry)
+            return isModified
         }
         catch (Throwable t) {
             exception = t
@@ -228,24 +232,24 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Persist the values in jsonObject to LDAP.
+     * Persist the values in attrMap to LDAP.
      *
-     * Attribute names in the newAttributeMap are case sensitive.  Attribute
+     * Attribute names in the attrMap are case sensitive.  Attribute
      * strings must match the case of the attribute names in the directory
      * schema, as when retrieved from the directory via a search() or
      * lookup().
      *
      * @param objectDef Object definition of the LDAP object
-     * @param jsonObject The objJson extracted from a LDAP DownstreamObject. 
+     * @param attrMap The map of the attributes for the LDAP object.
      *        Keys are case sensitive and must match the case of the
      *        attribute names in the directory schema.
-     * @return true if the object was successfully persisted to LDAP.  false
-     *         indicates an error.
+     * @return true if a modification occurred
      */
     @Override
-    void persist(String eventId, ObjectDefinition objectDef, Map<String, Object> jsonObject, boolean isDelete) throws LdapConnectorException {
+    boolean persist(String eventId, ObjectDefinition objectDef, Map<String, Object> attrMap, boolean isDelete) throws LdapConnectorException {
+        LinkedHashMap<String, Object> attrMapCopy = new LinkedHashMap<String, Object>(attrMap)
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
-        String pkey = jsonObject[pkeyAttrName]
+        String pkey = attrMapCopy[pkeyAttrName]
         if (!pkey) {
             throw new LdapConnectorException("LDAP object is missing a required value for primary key $pkeyAttrName")
         }
@@ -258,13 +262,15 @@ class LdapConnector implements Connector {
         // See if records belonging to the pkey exist
         List<DirContextAdapter> searchResults = search(eventId, (LdapObjectDefinition) objectDef, pkey)
 
+        boolean isModified = false
+
         if (!isDelete) {
-            String dn = jsonObject.dn
+            String dn = attrMapCopy.dn
             if (!dn) {
                 throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
             }
             // Remove the dn from the object -- not an actual attribute
-            jsonObject.remove("dn")
+            attrMapCopy.remove("dn")
 
             //
             // There's only supposed to be one entry-per-pkey in the
@@ -292,6 +298,7 @@ class LdapConnector implements Connector {
                 searchResults.each { DirContextAdapter entry ->
                     if (entry.dn != existingEntry?.dn) {
                         delete(eventId, pkey, entry.dn.toString())
+                        isModified = true
                     }
                 }
             }
@@ -309,9 +316,10 @@ class LdapConnector implements Connector {
                     if (!existingEntry) {
                         throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
                     }
+                    isModified = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(jsonObject)
+                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
                 Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
                 ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
                     if (newReplaceAttributeMap.containsKey(attrName)) {
@@ -327,7 +335,7 @@ class LdapConnector implements Connector {
                 if (!existingEntry.updateMode) {
                     existingEntry.updateMode = true
                 }
-                update(
+                if (update(
                         eventId,
                         pkey,
                         existingEntry,
@@ -335,17 +343,23 @@ class LdapConnector implements Connector {
                         newReplaceAttributeMap,
                         newAppendOnlyAttributeMap,
                         ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating()
-                )
+                )) {
+                    isModified = true
+                }
             } else {
                 // Doesn't already exist -- create
-                insert(eventId, pkey, dn, jsonObject)
+                insert(eventId, pkey, dn, attrMapCopy)
+                isModified = true
             }
         } else {
             // is a deletion for the pkey
             searchResults.each { DirContextAdapter entry ->
                 delete(eventId, pkey, entry.dn.toString())
+                isModified = true
             }
         }
+
+        return isModified
     }
 
     @SuppressWarnings("GrMethodMayBeStatic")
