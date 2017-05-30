@@ -44,6 +44,7 @@ import javax.naming.directory.Attribute
 import javax.naming.directory.Attributes
 import javax.naming.directory.BasicAttribute
 import javax.naming.directory.BasicAttributes
+import javax.naming.directory.ModificationItem
 
 @Slf4j
 class LdapConnector implements Connector {
@@ -123,7 +124,7 @@ class LdapConnector implements Connector {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
         Map<String, Object> convertedNewAttributeMap = null
-        boolean isModified = false
+        ModificationItem[] modificationItems = null
         try {
             oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
@@ -198,7 +199,8 @@ class LdapConnector implements Connector {
             log.debug("changesAttributes: ${changedAttributes}")
             */
 
-            isModified = existingEntry.modificationItems.size()
+            modificationItems = existingEntry.modificationItems
+            boolean isModified = modificationItems?.size()
             ldapTemplate.modifyAttributes(existingEntry)
             return isModified
         }
@@ -208,9 +210,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, modificationItems, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, isModified) }
+                updateEventCallbacks.each { it.success(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, modificationItems) }
             }
         }
     }

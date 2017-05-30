@@ -29,8 +29,10 @@ package edu.berkeley.bidms.connector.ldap.event
 
 import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
 
-interface LdapUpdateEventCallback extends LdapEventCallback {
-    void success(String eventId, LdapObjectDefinition objectDef, String pkey, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes, boolean isModified)
+import javax.naming.directory.ModificationItem
 
-    void failure(String eventId, LdapObjectDefinition objectDef, String pkey, Map<String, Object> oldAttributes, String newDn, Map<String, Object> newAttributes, Throwable exception)
+interface LdapUpdateEventCallback extends LdapEventCallback {
+    void success(String eventId, LdapObjectDefinition objectDef, String pkey, Map<String, Object> oldAttributes, String dn, Map<String, Object> newAttributes, ModificationItem[] modificationItems)
+
+    void failure(String eventId, LdapObjectDefinition objectDef, String pkey, Map<String, Object> oldAttributes, String dn, Map<String, Object> newAttributes, ModificationItem[] modificationItems, Throwable exception)
 }
