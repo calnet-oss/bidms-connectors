@@ -122,11 +122,12 @@ class LdapConnector implements Connector {
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
+        Map<String, Object> convertedNewAttributeMap = null
         try {
             oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
 
-            Map<String, Object> convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
+            convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
             Map<String, Object> attributesToKeepOrUpdate
             if (keepExistingAttributes) {
                 attributesToKeepOrUpdate = new LinkedHashMap<String, Object>(oldAttributeMap)
@@ -182,7 +183,7 @@ class LdapConnector implements Connector {
             }
 
             changedAttributes.each { Map.Entry<String, Object> entry ->
-                //log.debug("${entry.key} OLD=${oldAttributeMap[entry.key]} NEW=${entry.value}")
+                //log.debug("${entry.key} OLD=${oldAttributeMap[entry.key]} NEW=${entry.value} (${entry.value?.getClass()?.name})")
                 if (entry.value instanceof Collection) {
                     existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
                 } else if (entry.value) {
@@ -206,17 +207,19 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, newReplaceAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, newReplaceAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap) }
             }
         }
     }
 
     void insert(String eventId, String pkey, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
         Throwable exception
+        Map<String, Object> convertedNewAttributeMap = null
         try {
-            ldapTemplate.bind(buildDnName(dn), null, buildAttributes(attributeMap))
+            convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
+            ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
         }
         catch (Throwable t) {
             exception = t
@@ -224,9 +227,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                insertEventCallbacks.each { it.failure(eventId, pkey, dn, attributeMap, exception) }
+                insertEventCallbacks.each { it.failure(eventId, pkey, dn, convertedNewAttributeMap ?: attributeMap, exception) }
             } else {
-                insertEventCallbacks.each { it.success(eventId, pkey, dn, attributeMap) }
+                insertEventCallbacks.each { it.success(eventId, pkey, dn, convertedNewAttributeMap ?: attributeMap) }
             }
         }
     }
@@ -381,14 +384,10 @@ class LdapConnector implements Connector {
                 } else {
                     attrs.remove(entry.key)
                 }
-            } else if (entry.value instanceof String || entry.value instanceof Number || entry.value instanceof Boolean) {
-                // Directory servers interpret numbers and booleans as
-                // strings, so we use toString()
-                attrs.put(entry.key, entry.value?.toString())
-            } else if (entry.value == null) {
-                attrs.remove(entry.key)
+            } else if (entry.value != null) {
+                attrs.put(entry.key, entry.value)
             } else {
-                throw new RuntimeException("Type ${entry.value.getClass().name} for key ${entry.key} is not a recognized list, string, number, boolean or null type")
+                attrs.remove(entry.key)
             }
         }
         return attrs
@@ -396,16 +395,29 @@ class LdapConnector implements Connector {
 
     private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
         return map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
-            [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : it.value)]
+            [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : convertCallerProvidedValue(it.value))]
         }
     }
 
     @SuppressWarnings("GrMethodMayBeStatic")
     private Object convertCallerProvidedList(List list) {
         if (list.size() == 1) {
-            return list.first()
+            return convertCallerProvidedValue(list.first())
         } else {
-            return list
+            return list.collect { convertCallerProvidedValue(it) }
+        }
+    }
+
+    @SuppressWarnings("GrMethodMayBeStatic")
+    private Object convertCallerProvidedValue(Object value) {
+        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+            // Directory servers interpret numbers and booleans as
+            // strings, so we use toString()
+            return value.toString()
+        } else if (value == null) {
+            return null
+        } else {
+            throw new RuntimeException("Type ${value.getClass().name} is not a recognized list, string, number, boolean or null type")
         }
     }
 }
