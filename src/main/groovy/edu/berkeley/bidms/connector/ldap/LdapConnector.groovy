@@ -61,11 +61,11 @@ class LdapConnector implements Connector {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
     }
 
-    DirContextAdapter lookup(String eventId, String dn) {
+    DirContextAdapter lookup(String eventId, LdapObjectDefinition objectDef, String dn) {
         return (DirContextAdapter) ldapTemplate.lookup(buildDnName(dn))
     }
 
-    void delete(String eventId, String pkey, String dn) throws LdapConnectorException {
+    void delete(String eventId, LdapObjectDefinition objectDef, String pkey, String dn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.unbind(buildDnName(dn))
@@ -76,14 +76,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                deleteEventCallbacks.each { it.failure(eventId, pkey, dn, exception) }
+                deleteEventCallbacks.each { it.failure(eventId, objectDef, pkey, dn, exception) }
             } else {
-                deleteEventCallbacks.each { it.success(eventId, pkey, dn) }
+                deleteEventCallbacks.each { it.success(eventId, objectDef, pkey, dn) }
             }
         }
     }
 
-    void rename(String eventId, String pkey, String oldDn, String newDn) throws LdapConnectorException {
+    void rename(String eventId, LdapObjectDefinition objectDef, String pkey, String oldDn, String newDn) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
@@ -94,9 +94,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                renameEventCallbacks.each { it.failure(eventId, pkey, oldDn, newDn, exception) }
+                renameEventCallbacks.each { it.failure(eventId, objectDef, pkey, oldDn, newDn, exception) }
             } else {
-                renameEventCallbacks.each { it.success(eventId, pkey, oldDn, newDn) }
+                renameEventCallbacks.each { it.success(eventId, objectDef, pkey, oldDn, newDn) }
             }
         }
     }
@@ -113,12 +113,12 @@ class LdapConnector implements Connector {
      */
     boolean update(
             String eventId,
+            LdapObjectDefinition objectDef,
             String pkey,
             DirContextAdapter existingEntry,
             String dn,
             Map<String, Object> newReplaceAttributeMap,
-            Map<String, List<Object>> newAppendOnlyAttributeMap,
-            boolean keepExistingAttributes
+            Map<String, List<Object>> newAppendOnlyAttributeMap
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
@@ -130,7 +130,7 @@ class LdapConnector implements Connector {
 
             convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
             Map<String, Object> attributesToKeepOrUpdate
-            if (keepExistingAttributes) {
+            if (objectDef.keepExistingAttributesWhenUpdating()) {
                 attributesToKeepOrUpdate = new LinkedHashMap<String, Object>(oldAttributeMap)
                 attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
             } else {
@@ -168,7 +168,7 @@ class LdapConnector implements Connector {
             // the attribute is not in the newAttributeMap or if the
             // attribute is explicitly set to null in the newAttributeMap.
             HashSet<String> attributeNamesToRemove = (
-                    (!keepExistingAttributes ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
+                    (!objectDef.keepExistingAttributesWhenUpdating() ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
             ) + (
                     (newReplaceAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
             )
@@ -208,14 +208,14 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, exception) }
+                updateEventCallbacks.each { it.failure(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, isModified) }
+                updateEventCallbacks.each { it.success(eventId, objectDef, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, isModified) }
             }
         }
     }
 
-    void insert(String eventId, String pkey, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
+    void insert(String eventId, LdapObjectDefinition objectDef, String pkey, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> convertedNewAttributeMap = null
         try {
@@ -228,9 +228,9 @@ class LdapConnector implements Connector {
         }
         finally {
             if (exception) {
-                insertEventCallbacks.each { it.failure(eventId, pkey, dn, convertedNewAttributeMap ?: attributeMap, exception) }
+                insertEventCallbacks.each { it.failure(eventId, objectDef, pkey, dn, convertedNewAttributeMap ?: attributeMap, exception) }
             } else {
-                insertEventCallbacks.each { it.success(eventId, pkey, dn, convertedNewAttributeMap ?: attributeMap) }
+                insertEventCallbacks.each { it.success(eventId, objectDef, pkey, dn, convertedNewAttributeMap ?: attributeMap) }
             }
         }
     }
@@ -301,7 +301,7 @@ class LdapConnector implements Connector {
                 // existingEntry
                 searchResults.each { DirContextAdapter entry ->
                     if (entry.dn != existingEntry?.dn) {
-                        delete(eventId, pkey, entry.dn.toString())
+                        delete(eventId, (LdapObjectDefinition) objectDef, pkey, entry.dn.toString())
                         isModified = true
                     }
                 }
@@ -315,8 +315,8 @@ class LdapConnector implements Connector {
                 // Check for need to move DNs
                 if (existingDn != dn) {
                     // Move DN
-                    rename(eventId, pkey, existingDn, dn)
-                    existingEntry = lookup(eventId, dn)
+                    rename(eventId, (LdapObjectDefinition) objectDef, pkey, existingDn, dn)
+                    existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, dn)
                     if (!existingEntry) {
                         throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
                     }
@@ -341,24 +341,24 @@ class LdapConnector implements Connector {
                 }
                 if (update(
                         eventId,
+                        (LdapObjectDefinition) objectDef,
                         pkey,
                         existingEntry,
                         dn,
                         newReplaceAttributeMap,
-                        newAppendOnlyAttributeMap,
-                        ((LdapObjectDefinition) objectDef).keepExistingAttributesWhenUpdating()
+                        newAppendOnlyAttributeMap
                 )) {
                     isModified = true
                 }
             } else {
                 // Doesn't already exist -- create
-                insert(eventId, pkey, dn, attrMapCopy)
+                insert(eventId, (LdapObjectDefinition) objectDef, pkey, dn, attrMapCopy)
                 isModified = true
             }
         } else {
             // is a deletion for the pkey
             searchResults.each { DirContextAdapter entry ->
-                delete(eventId, pkey, entry.dn.toString())
+                delete(eventId, (LdapObjectDefinition) objectDef, pkey, entry.dn.toString())
                 isModified = true
             }
         }

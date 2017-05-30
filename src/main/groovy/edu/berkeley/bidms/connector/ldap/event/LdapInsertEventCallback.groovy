@@ -27,8 +27,10 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
-interface LdapInsertEventCallback extends LdapEventCallback {
-    void success(String eventId, String pkey, String dn, Map<String, Object> newAttributes)
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
 
-    void failure(String eventId, String pkey, String dn, Map<String, Object> newAttributes, Throwable exception)
+interface LdapInsertEventCallback extends LdapEventCallback {
+    void success(String eventId, LdapObjectDefinition objectDef, String pkey, String dn, Map<String, Object> newAttributes)
+
+    void failure(String eventId, LdapObjectDefinition objectDef, String pkey, String dn, Map<String, Object> newAttributes, Throwable exception)
 }

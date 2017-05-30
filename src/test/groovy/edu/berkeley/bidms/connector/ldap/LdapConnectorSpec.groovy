@@ -233,10 +233,10 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == (!doDelete ? (createDupe && !removeDupes ? 2 : 1) : 0)
         (!doDelete ? foundDn.dn : null) == (!doDelete ? dn : null)
         (!doDelete ? foundDn.description : null) == (!doDelete ? "updated" : null)
-        deletes * deleteEventCallback.success("eventId", uid, _)
-        renames * renameEventCallback.success("eventId", uid, _, _)
-        updates * updateEventCallback.success("eventId", uid, _, _, _, true)
-        inserts * insertEventCallback.success("eventId", uid, _, _)
+        deletes * deleteEventCallback.success("eventId", uidObjectDef, uid, _)
+        renames * renameEventCallback.success("eventId", uidObjectDef, uid, _, _)
+        updates * updateEventCallback.success("eventId", uidObjectDef, uid, _, _, _, true)
+        inserts * insertEventCallback.success("eventId", uidObjectDef, uid, _, _)
 
         where:
         description                                                | createFirst | createDupe | doDelete | removeDupes | uid | dn                                           | deletes | renames | updates | inserts
