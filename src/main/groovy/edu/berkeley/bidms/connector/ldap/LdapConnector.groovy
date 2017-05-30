@@ -123,6 +123,7 @@ class LdapConnector implements Connector {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
         Map<String, Object> convertedNewAttributeMap = null
+        boolean isModified = false
         try {
             oldAttributeMap = toMapContextMapper.mapFromContext(existingEntry)
             oldAttributeMap.remove("dn")
@@ -197,7 +198,7 @@ class LdapConnector implements Connector {
             log.debug("changesAttributes: ${changedAttributes}")
             */
 
-            boolean isModified = existingEntry.modificationItems.size()
+            isModified = existingEntry.modificationItems.size()
             ldapTemplate.modifyAttributes(existingEntry)
             return isModified
         }
@@ -209,7 +210,7 @@ class LdapConnector implements Connector {
             if (exception) {
                 updateEventCallbacks.each { it.failure(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, exception) }
             } else {
-                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap) }
+                updateEventCallbacks.each { it.success(eventId, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, isModified) }
             }
         }
     }

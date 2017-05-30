@@ -235,7 +235,7 @@ class LdapConnectorSpec extends Specification {
         (!doDelete ? foundDn.description : null) == (!doDelete ? "updated" : null)
         deletes * deleteEventCallback.success("eventId", uid, _)
         renames * renameEventCallback.success("eventId", uid, _, _)
-        updates * updateEventCallback.success("eventId", uid, _, _, _)
+        updates * updateEventCallback.success("eventId", uid, _, _, _, true)
         inserts * insertEventCallback.success("eventId", uid, _, _)
 
         where:
