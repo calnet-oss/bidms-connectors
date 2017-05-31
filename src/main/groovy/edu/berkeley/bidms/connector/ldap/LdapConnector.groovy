@@ -34,17 +34,14 @@ import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import groovy.util.logging.Slf4j
+import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.support.LdapNameBuilder
 
 import javax.naming.Name
-import javax.naming.directory.Attribute
-import javax.naming.directory.Attributes
-import javax.naming.directory.BasicAttribute
-import javax.naming.directory.BasicAttributes
-import javax.naming.directory.ModificationItem
+import javax.naming.directory.*
 
 @Slf4j
 class LdapConnector implements Connector {
@@ -289,6 +286,15 @@ class LdapConnector implements Connector {
 
             DirContextAdapter existingEntry = searchResults?.find { DirContextAdapter entry ->
                 entry.dn.toString() == dn
+            }
+            // DN may still exist but with a different primary key
+            if (!existingEntry) {
+                try {
+                    existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, dn)
+                }
+                catch (NameNotFoundException ignored) {
+                    // no-op
+                }
             }
             if (!existingEntry && searchResults.size() > 0) {
                 // None match the DN, so use the first one that matches a

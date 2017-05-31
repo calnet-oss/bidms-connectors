@@ -110,13 +110,13 @@ class LdapConnectorSpec extends Specification {
         ldapTemplate.unbind(ldapConnector.buildDnName("ou=$ou,dc=berkeley,dc=edu"))
     }
 
-    void addTestEntry(String dn, String uid) {
+    void addTestEntry(String dn, String uid, String cn = null) {
         Name dnName = ldapConnector.buildDnName(dn)
         ldapTemplate.bind(dnName, null, ldapConnector.buildAttributes([
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson"],
                 sn         : "User",
-                cn         : "Test User",
+                cn         : cn ?: "Test User",
                 description: "initial test"
         ]))
     }
@@ -283,5 +283,51 @@ class LdapConnectorSpec extends Specification {
         !didUpdate
         retrieved.size() == 1
         retrieved.first().description == "initial test"
+    }
+
+    @Unroll("#description")
+    void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
+        given:
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null)
+
+        when:
+        addOu("namespace")
+
+        // create initial entry for cn with the primary key of createUid
+        String dn = "cn=$cn,ou=namespace,dc=berkeley,dc=edu"
+        addTestEntry(dn, createUid, cn)
+        assert ((DirContextAdapter) ldapTemplate.lookup(dn)).getStringAttribute("description") == "initial test"
+
+        // update the entry for cn, but change the primary key within the entry to updateUid
+        String eventId = "eventId"
+        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, [
+                dn         : dn,
+                uid        : updateUid,
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn         : "User",
+                cn         : cn,
+                mail       : [],
+                description: ["updated"]
+        ], false)
+
+        List<Map<String, Object>> retrieved = searchForUid(updateUid)
+        Map<String, Object> foundDn = retrieved.find {
+            it.dn == dn
+        }
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("namespace")
+
+        then:
+        isModified
+        retrieved.size() == 1
+        foundDn.dn == dn
+        foundDn.description == "updated"
+        1 * updateEventCallback.success("eventId", uidObjectDef, updateUid, _, _, _, _)
+
+        where:
+        description                           | cn         | createUid | updateUid
+        "test update with primary key change" | "testName" | "1"       | "2"
     }
 }
