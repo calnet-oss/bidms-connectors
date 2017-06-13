@@ -25,12 +25,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap
 
-import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
-
-interface LdapRenameEventCallback extends LdapEventCallback {
-    void success(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String oldDn, String newDn)
-
-    void failure(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String oldDn, String newDn, Throwable exception)
+enum FoundObjectMethod {
+    BY_GLOB_UNIQUE_IDENTIFIER,
+    BY_PKEY,
+    BY_DN,
+    BY_FIRST_FOUND
 }

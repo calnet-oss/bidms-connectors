@@ -31,7 +31,11 @@ import edu.berkeley.bidms.connector.ObjectDefinition;
 import org.springframework.ldap.query.LdapQuery;
 
 public interface LdapObjectDefinition extends ObjectDefinition {
+    String getGloballyUniqueIdentifierAttributeName();
+
     String getPrimaryKeyAttributeName();
+
+    LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier);
 
     LdapQuery getLdapQueryForPrimaryKey(String pkey);
 

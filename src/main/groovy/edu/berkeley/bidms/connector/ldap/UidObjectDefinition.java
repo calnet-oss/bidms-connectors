@@ -78,14 +78,28 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     }
 
     @Override
+    public String getGloballyUniqueIdentifierAttributeName() {
+        return "entryUUID";
+    }
+
+    @Override
     public String getPrimaryKeyAttributeName() {
         return "uid";
     }
 
     @Override
-    public LdapQuery getLdapQueryForPrimaryKey(String uid) {
-        return LdapQueryBuilder.query().where("objectClass").is(objectClass).and("uid").is(uid);
+    public LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier) {
+        return LdapQueryBuilder
+                .query()
+                .where("objectClass")
+                .is(objectClass)
+                .and(getGloballyUniqueIdentifierAttributeName())
+                .is(uniqueIdentifier.toString());
+    }
 
+    @Override
+    public LdapQuery getLdapQueryForPrimaryKey(String pkey) {
+        return LdapQueryBuilder.query().where("objectClass").is(objectClass).and(getPrimaryKeyAttributeName()).is(pkey);
     }
 
     @Override
