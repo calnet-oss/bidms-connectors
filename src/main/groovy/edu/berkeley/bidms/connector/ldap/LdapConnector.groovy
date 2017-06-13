@@ -69,7 +69,12 @@ class LdapConnector implements Connector {
         }
     }
 
-    DirContextAdapter lookupByGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier) {
+    DirContextAdapter lookupByGloballyUniqueIdentifier(
+            String eventId,
+            LdapObjectDefinition objectDef,
+            LdapCallbackContext context,
+            Object uniqueIdentifier
+    ) {
         return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(uniqueIdentifier), toDirContextAdapterContextMapper)
     }
 
@@ -219,7 +224,14 @@ class LdapConnector implements Connector {
         }
     }
 
-    void insert(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn, Map<String, Object> attributeMap) throws LdapConnectorException {
+    void insert(
+            String eventId,
+            LdapObjectDefinition objectDef,
+            LdapCallbackContext context,
+            String pkey,
+            String dn,
+            Map<String, Object> attributeMap
+    ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> convertedNewAttributeMap = null
         Object directoryUniqueIdentifier = null
@@ -275,7 +287,13 @@ class LdapConnector implements Connector {
      * @return true if a modification occurred
      */
     @Override
-    boolean persist(String eventId, ObjectDefinition objectDef, CallbackContext context, Map<String, Object> attrMap, boolean isDelete) throws LdapConnectorException {
+    boolean persist(
+            String eventId,
+            ObjectDefinition objectDef,
+            CallbackContext context,
+            Map<String, Object> attrMap,
+            boolean isDelete
+    ) throws LdapConnectorException {
         LinkedHashMap<String, Object> attrMapCopy = new LinkedHashMap<String, Object>(attrMap)
 
         // (optional) globally unique identifier
