@@ -28,8 +28,8 @@
 package edu.berkeley.bidms.connector.ldap
 
 enum FoundObjectMethod {
-    BY_GLOB_UNIQUE_IDENTIFIER,
-    BY_PKEY,
-    BY_DN,
+    BY_DN_MATCHED_KEY, // key is pkey or globally unique identifier
+    BY_DN_MISMATCHED_KEYS, // keys are pkey and globally unique identifier
+    BY_MATCHED_KEY_DN_MISMATCH,
     BY_FIRST_FOUND
 }

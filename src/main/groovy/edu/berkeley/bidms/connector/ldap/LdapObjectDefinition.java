@@ -35,9 +35,11 @@ public interface LdapObjectDefinition extends ObjectDefinition {
 
     String getPrimaryKeyAttributeName();
 
-    LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier);
+    LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey);
 
     LdapQuery getLdapQueryForPrimaryKey(String pkey);
+
+    LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier);
 
     boolean acceptAsExistingDn(String dn);
 

@@ -28,7 +28,8 @@
 package edu.berkeley.bidms.connector.ldap;
 
 import org.springframework.ldap.query.LdapQuery;
-import org.springframework.ldap.query.LdapQueryBuilder;
+
+import static org.springframework.ldap.query.LdapQueryBuilder.query;
 
 /**
  * An object definition for LDAP objects where the primary key is the uid
@@ -88,9 +89,20 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     }
 
     @Override
+    public LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey) {
+        return query()
+                .where("objectClass")
+                .is(objectClass)
+                .and(query()
+                        .where(getGloballyUniqueIdentifierAttributeName())
+                        .is(uniqueIdentifier.toString())
+                        .or(getPrimaryKeyAttributeName()).is(pkey)
+                );
+    }
+
+    @Override
     public LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier) {
-        return LdapQueryBuilder
-                .query()
+        return query()
                 .where("objectClass")
                 .is(objectClass)
                 .and(getGloballyUniqueIdentifierAttributeName())
@@ -99,7 +111,11 @@ public class UidObjectDefinition implements LdapObjectDefinition {
 
     @Override
     public LdapQuery getLdapQueryForPrimaryKey(String pkey) {
-        return LdapQueryBuilder.query().where("objectClass").is(objectClass).and(getPrimaryKeyAttributeName()).is(pkey);
+        return query()
+                .where("objectClass")
+                .is(objectClass)
+                .and(getPrimaryKeyAttributeName())
+                .is(pkey);
     }
 
     @Override

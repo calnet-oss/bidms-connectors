@@ -57,6 +57,10 @@ class LdapConnector implements Connector {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
     }
 
+    List<DirContextAdapter> searchByGloballyUniqueIdentifierOrPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier, String pkey) {
+        return ldapTemplate.search(objectDef.getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(uniqueIdentifier, pkey), toDirContextAdapterContextMapper)
+    }
+
     DirContextAdapter lookup(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String dn, String[] attributes = null) {
         if (!attributes) {
             return (DirContextAdapter) ldapTemplate.lookup(buildDnName(dn))
@@ -65,7 +69,7 @@ class LdapConnector implements Connector {
         }
     }
 
-    DirContextAdapter lookupByGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier, String[] attributes = null) {
+    DirContextAdapter lookupByGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier) {
         return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(uniqueIdentifier), toDirContextAdapterContextMapper)
     }
 
@@ -167,7 +171,6 @@ class LdapConnector implements Connector {
                 }
             }
 
-            //log.debug("attributesToKeepOrUpdate = ${attributesToKeepOrUpdate}")
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
 
             // Removing the attribute if keepExistingAttributes is false and
@@ -190,19 +193,12 @@ class LdapConnector implements Connector {
             }
 
             changedAttributes.each { Map.Entry<String, Object> entry ->
-                //log.debug("${entry.key} OLD=${oldAttributeMap[entry.key]} NEW=${entry.value} (${entry.value?.getClass()?.name})")
                 if (entry.value instanceof Collection) {
                     existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
                 } else if (entry.value) {
                     existingEntry.setAttributeValues(entry.key, [entry.value] as Object[])
                 }
             }
-
-            /*
-            log.debug("attributeNamesToRemove: ${attributeNamesToRemove}")
-            log.debug("modifications: ${existingEntry.modificationItems}")
-            log.debug("changesAttributes: ${changedAttributes}")
-            */
 
             modificationItems = existingEntry.modificationItems
             boolean isModified = modificationItems?.size()
@@ -299,54 +295,90 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException("LDAP object is missing a required value for primary key $pkeyAttrName")
         }
 
+        // DN
+        String dn = null
+        if (!isDelete) {
+            dn = attrMapCopy.dn
+            if (!dn) {
+                throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
+            }
+        }
+        // Remove the dn from the object -- not an actual attribute
+        attrMapCopy.remove("dn")
+
         // Spring method naming is a little confusing.  Spring uses the word
         // "bind" and "rebind" to mean "create" and "update." In this
         // context, it does not mean "authenticate (bind) to the LDAP
         // server."
 
-        // See if records belonging to the pkey exist
-        List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
+        // See if records belonging to the globally unique identifier or
+        // pkey exist
+        List<DirContextAdapter> searchResults = (uniqueIdentifier
+                ? searchByGloballyUniqueIdentifierOrPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier, pkey)
+                : searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey))
 
         boolean isModified = false
 
         if (!isDelete) {
-            String dn = attrMapCopy.dn
-            if (!dn) {
-                throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
-            }
-            // Remove the dn from the object -- not an actual attribute
-            attrMapCopy.remove("dn")
-
             //
             // There's only supposed to be one entry-per-pkey in the
             // directory, but this is not guaranteed to always be the case. 
             // When the search returns more than one entry, first see if
-            // there's any one that already matches the globally unique
-            // identifier of our downstream object and if that yields
-            // nothing, do the same for the DN.  If none match and
-            // removeDuplicatePrimaryKeys() returns true, pick one to rename
-            // and delete the rest.
+            // there's any one that already matches the primary key of our
+            // downstream object and if that yields nothing, do the same for
+            // the DN.  If none match and removeDuplicatePrimaryKeys()
+            // returns true, pick one to rename and delete the rest.
             //
 
             DirContextAdapter existingEntry = null
             FoundObjectMethod foundObjectMethod = null
 
-            if (uniqueIdentifier) {
-                // try to find by unique identifier first
-                existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier, [uniqueIdentifierAttrName] as String[])
-                if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_GLOB_UNIQUE_IDENTIFIER
-                }
-            }
             if (!existingEntry) {
-                // didn't find by unique identifier -- try the DN next
+                // Find entries with matching dn.  searchResults only
+                // contains entries with matching unique identifier or pkey.
                 existingEntry = searchResults?.find { DirContextAdapter entry ->
                     entry.dn.toString() == dn
                 }
                 if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_PKEY
+                    // key is unique identifier or pkey
+                    foundObjectMethod = FoundObjectMethod.BY_DN_MATCHED_KEY
                 }
             }
+            // If none of the entries match DN but there's one value in
+            // searchResults, that means the DN has changed, but the object
+            // was found by unique identifier or pkey
+            if (!existingEntry && searchResults?.size() == 1) {
+                existingEntry = searchResults.first()
+                // key is unique identifier or pkey
+                foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
+            }
+            // If none of the entries match DN but there's more than one
+            // value in searchResults, that means DN has changed, and one of
+            // the objects in the searchResults could be a match against the
+            // globally unique identifier, which we want to prioritize over
+            // the others
+            if (!existingEntry && searchResults?.size()) {
+                if (uniqueIdentifier) {
+                    existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier)
+                }
+                if (existingEntry) {
+                    foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
+                } else {
+                    // If none of the entires match DN or unique identifier
+                    // but there are more than one value in searchResults,
+                    // that means there are multiple entries in the
+                    // directory with the same pkey, none of them matching
+                    // our DN.  Just pick the first one found that matches
+                    // our DN acceptance criteria.
+                    existingEntry = searchResults.find { DirContextAdapter entry ->
+                        ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
+                    }
+                    if (existingEntry) {
+                        foundObjectMethod = FoundObjectMethod.BY_FIRST_FOUND
+                    }
+                }
+            }
+
             // DN may still exist but with a different unique identifier and
             // primary key
             if (!existingEntry) {
@@ -357,17 +389,7 @@ class LdapConnector implements Connector {
                     // no-op
                 }
                 if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_DN
-                }
-            }
-            if (!existingEntry && searchResults.size() > 0) {
-                // None match the DN, so use the first one that matches a
-                // filter criteria
-                existingEntry = searchResults.find { DirContextAdapter entry ->
-                    ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
-                }
-                if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_FIRST_FOUND
+                    foundObjectMethod = FoundObjectMethod.BY_DN_MISMATCHED_KEYS
                 }
             }
 
