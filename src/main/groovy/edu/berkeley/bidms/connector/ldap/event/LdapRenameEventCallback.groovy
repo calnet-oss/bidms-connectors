@@ -27,10 +27,10 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
-import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 
-interface LdapRenameEventCallback extends LdapEventCallback {
-    void success(String eventId, LdapObjectDefinition objectDef, String pkey, String oldDn, String newDn)
-
-    void failure(String eventId, LdapObjectDefinition objectDef, String pkey, String oldDn, String newDn, Throwable exception)
+/**
+ * Callback for rename events.
+ */
+interface LdapRenameEventCallback extends LdapEventCallback<LdapRenameEventMessage> {
 }

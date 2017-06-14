@@ -27,5 +27,13 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
-interface LdapEventCallback {
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+
+/**
+ * Interface for an event callback.
+ *
+ * @param <T> The type of LdapEventMessage for the callback.
+ */
+interface LdapEventCallback<T extends LdapEventMessage> {
+    void receive(T message)
 }

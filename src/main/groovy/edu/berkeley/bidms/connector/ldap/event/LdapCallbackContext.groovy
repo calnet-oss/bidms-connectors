@@ -25,14 +25,12 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap
+package edu.berkeley.bidms.connector.ldap.event
 
-import edu.berkeley.bidms.connector.ConnectorException
-import groovy.transform.InheritConstructors
+import edu.berkeley.bidms.connector.CallbackContext
 
 /**
- * Exception thrown within LdapConnector functionality.
+ * Caller-provided context that is sent back to callbacks.
  */
-@InheritConstructors
-class LdapConnectorException extends ConnectorException{
+interface LdapCallbackContext extends CallbackContext {
 }

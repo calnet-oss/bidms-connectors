@@ -25,14 +25,14 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap
-
-import edu.berkeley.bidms.connector.ConnectorException
-import groovy.transform.InheritConstructors
+package edu.berkeley.bidms.connector.ldap.event
 
 /**
- * Exception thrown within LdapConnector functionality.
+ * Event type enum.
  */
-@InheritConstructors
-class LdapConnectorException extends ConnectorException{
+enum LdapEventType {
+    DELETE_EVENT,
+    INSERT_EVENT,
+    RENAME_EVENT,
+    UPDATE_EVENT
 }

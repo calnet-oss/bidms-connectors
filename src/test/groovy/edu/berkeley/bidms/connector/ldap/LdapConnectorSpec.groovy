@@ -31,6 +31,11 @@ import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
+import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
@@ -58,12 +63,13 @@ class LdapConnectorSpec extends Specification {
     LdapRenameEventCallback renameEventCallback = Mock(LdapRenameEventCallback)
     LdapDeleteEventCallback deleteEventCallback = Mock(LdapDeleteEventCallback)
 
-    LdapConnector ldapConnector = new LdapConnector([
+    LdapConnector ldapConnector = new LdapConnector(
+            isSynchronousCallback: true,
             insertEventCallbacks: [insertEventCallback],
             updateEventCallbacks: [updateEventCallback],
             renameEventCallbacks: [renameEventCallback],
             deleteEventCallbacks: [deleteEventCallback]
-    ])
+    )
 
     void setupSpec() {
         this.embeddedLdapServer = new EmbeddedLdapServer() {
@@ -110,7 +116,10 @@ class LdapConnectorSpec extends Specification {
         ldapTemplate.unbind(ldapConnector.buildDnName("ou=$ou,dc=berkeley,dc=edu"))
     }
 
-    void addTestEntry(String dn, String uid, String cn = null) {
+    /**
+     * @return The entryUUID attribute on the newly created object
+     */
+    String addTestEntry(String dn, String uid, String cn = null) {
         Name dnName = ldapConnector.buildDnName(dn)
         ldapTemplate.bind(dnName, null, ldapConnector.buildAttributes([
                 uid        : uid,
@@ -119,6 +128,8 @@ class LdapConnectorSpec extends Specification {
                 cn         : cn ?: "Test User",
                 description: "initial test"
         ]))
+        Map<String, Object> found = ldapTemplate.lookup(dnName, ["entryUUID"] as String[], ldapConnector.toMapContextMapper)
+        return found?.entryUUID
     }
 
     void deleteDn(String dn) {
@@ -132,6 +143,15 @@ class LdapConnectorSpec extends Specification {
                 ldapConnector.toMapContextMapper)
     }
 
+    Map<String, Object> lookupDn(String dn) {
+        try {
+            return ldapTemplate.lookup(dn, ldapConnector.toMapContextMapper)
+        }
+        catch (NameNotFoundException ignored) {
+            return null
+        }
+    }
+
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
@@ -143,7 +163,7 @@ class LdapConnectorSpec extends Specification {
         String uid = "1"
         String eventId = "eventId"
         // create
-        boolean didCreate = ldapConnector.persist(eventId, objDef, [
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
@@ -152,8 +172,8 @@ class LdapConnectorSpec extends Specification {
                 description: "initial test",
                 mail       : ["test@berkeley.edu"]
         ], false)
-        // update - description is kept or removed based on the value of keepExistingAttributesWhenUpdating in objDef
-        boolean didUpdate = ldapConnector.persist(eventId, objDef, [
+        // update - description is kept or removed based on the value of isKeepExistingAttributesWhenUpdating in objDef
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
                 dn         : dn,
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
@@ -175,41 +195,50 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().mail == expectedMail
 
         where:
-        description                                                                               | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | appendAttrs | expectedDescription | expectedMail
-        "keepExistingAttributesWhenUpdating=true"                                                 | true                               | null           | false           | null        | "initial test"      | "test2@berkeley.edu"
-        "keepExistingAttributesWhenUpdating=false"                                                | false                              | null           | false           | null        | null                | "test2@berkeley.edu"
-        "keepExistingAttributesWhenUpdating=true, update existing description"                    | true                               | "updated"      | false           | null        | "updated"           | "test2@berkeley.edu"
-        "keepExistingAttributesWhenUpdating=true, update existing description and append to mail" | true                               | "updated"      | false           | ["mail"]    | "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
-        "keepExistingAttributesWhenUpdating=true, remove existing description by explicit null"   | true                               | null           | true            | null        | null                | "test2@berkeley.edu"
+        description                                                                                 | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | appendAttrs | expectedDescription | expectedMail
+        "isKeepExistingAttributesWhenUpdating=true"                                                 | true                               | null           | false           | null        | "initial test"      | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=false"                                                | false                              | null           | false           | null        | null                | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description"                    | true                               | "updated"      | false           | null        | "updated"           | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail" | true                               | "updated"      | false           | ["mail"]    | "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
+        "isKeepExistingAttributesWhenUpdating=true, remove existing description by explicit null"   | true                               | null           | true            | null        | null                | "test2@berkeley.edu"
     }
 
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
         UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null)
+        String eventId = "eventId"
+
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        Map<String, Object> persistAttrMap = [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                mail       : [],
+                description: ["updated"]
+        ]
 
         when:
         addOu("people")
         addOu("expired people")
         addOu("the middle")
+        String firstEntryUUID = null
         if (createFirst) {
-            addTestEntry("uid=$uid,ou=people,dc=berkeley,dc=edu", uid)
+            firstEntryUUID = addTestEntry("uid=$uid,ou=people,dc=berkeley,dc=edu", uid)
+            assert firstEntryUUID
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
         if (createDupe) {
             addTestEntry("uid=$uid,ou=expired people,dc=berkeley,dc=edu", uid)
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
-        String eventId = "eventId"
-        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
-                sn         : "User",
-                cn         : "Test User",
-                mail       : [],
-                description: ["updated"]
-        ], doDelete)
+
+        if (createFirst && srchFirstUUID) {
+            persistAttrMap.entryUUID = firstEntryUUID
+        }
+        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, null, persistAttrMap, doDelete)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
         Map<String, Object> foundDn = retrieved.find {
@@ -233,21 +262,76 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == (!doDelete ? (createDupe && !removeDupes ? 2 : 1) : 0)
         (!doDelete ? foundDn.dn : null) == (!doDelete ? dn : null)
         (!doDelete ? foundDn.description : null) == (!doDelete ? "updated" : null)
-        deletes * deleteEventCallback.success("eventId", uidObjectDef, uid, _)
-        renames * renameEventCallback.success("eventId", uidObjectDef, uid, _, _)
-        updates * updateEventCallback.success("eventId", uidObjectDef, uid, _, _, _, _)
-        inserts * insertEventCallback.success("eventId", uidObjectDef, uid, _, _)
+        deletes * deleteEventCallback.receive(_) >> { LdapDeleteEventMessage msg ->
+            assert msg.isSuccess
+            assert msg.eventId == eventId
+            assert msg.objectDef == uidObjectDef
+            assert msg.pkey in delPkey
+            assert msg.dn in delDn
+        }
+        renames * renameEventCallback.receive(_) >> { LdapRenameEventMessage msg ->
+            assert msg.isSuccess
+            assert msg.eventId == eventId
+            assert msg.objectDef == uidObjectDef
+            assert msg.pkey == uid
+            assert msg.oldDn in renameOldDn
+            assert msg.newDn == dn
+        }
+        updates * updateEventCallback.receive(new LdapUpdateEventMessage(
+                isSuccess: true,
+                eventId: eventId,
+                objectDef: uidObjectDef,
+                foundMethod: foundMethod,
+                pkey: uid,
+                oldAttributes: [
+                        uid        : uid,
+                        description: "initial test",
+                        sn         : "User",
+                        cn         : "Test User",
+                        objectClass: objectClasses
+                ],
+                dn: dn,
+                newAttributes: [
+                        uid        : uid,
+                        objectClass: objectClasses,
+                        sn         : "User",
+                        cn         : "Test User",
+                        description: "updated"
+                ]
+        )) >> { LdapUpdateEventMessage msg ->
+            assert msg.modificationItems?.size()
+        }
+        inserts * insertEventCallback.receive(_) >> { LdapInsertEventMessage msg ->
+            assert msg.isSuccess
+            assert msg.eventId == eventId
+            assert msg.objectDef == uidObjectDef
+            assert msg.pkey == uid
+            assert msg.dn == dn
+            assert msg.newAttributes == [
+                    uid        : uid,
+                    objectClass: objectClasses,
+                    sn         : "User",
+                    cn         : "Test User",
+                    description: "updated"
+            ]
+            assert msg.globallyUniqueIdentifier
+        }
 
         where:
-        description                                                | createFirst | createDupe | doDelete | removeDupes | uid | dn                                           | deletes | renames | updates | inserts
-        "test creation"                                            | false       | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1
-        "test update"                                              | true        | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0
-        "test rename"                                              | true        | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0
-        "test update and remove nonmatching dupe"                  | true        | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0
-        "test update and don't remove nonmatching dupe"            | true        | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0
-        "test update with two dupes, rename one, delete the other" | true        | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0
-        "test delete"                                              | true        | false      | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0
-        "test multi-delete"                                        | true        | true       | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0
+        description                                                                                          | createFirst | srchFirstUUID | createDupe | doDelete | removeDupes | uid | dn                                           | deletes | renames | updates | inserts | foundMethod                                  | delPkey | delDn                                                                                | renameOldDn
+        "test creation"                                                                                      | false       | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1       | null                                         | null    | null                                                                                 | null
+        "test update, find by pkey"                                                                          | true        | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update, find by entryUUID"                                                                     | true        | true          | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test rename, find by pkey but mismatching dn"                                                       | true        | false         | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test rename, find by entryUUID but mismatching dn"                                                  | true        | true          | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test update by finding pkey and remove nonmatching dupe"                                            | true        | false         | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
+        "test update by finding entryUUID and remove nonmatching dupe"                                       | true        | true          | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
+        "test update by finding pkey and don't remove nonmatching dupe"                                      | true        | false         | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update by finding entryUUID and don't remove nonmatching dupe"                                 | true        | true          | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update with two dupes by finding by first-found, rename one, delete the other"                 | true        | false         | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | FoundObjectMethod.BY_FIRST_FOUND             | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"]
+        "test update with two dupes by finding by entryUUID but mismatched dn, rename one, delete the other" | true        | true          | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test delete"                                                                                        | true        | false         | false      | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0       | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu"]                                               | null
+        "test multi-delete"                                                                                  | true        | false         | true       | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0       | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | null
     }
 
     void "test persist return value on a non-modification"() {
@@ -268,9 +352,9 @@ class LdapConnectorSpec extends Specification {
                 description: "initial test"
         ]
         // create
-        boolean didCreate = ldapConnector.persist(eventId, objDef, map, false)
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, map, false)
         // update with same data such that no modification should occur
-        boolean didUpdate = ldapConnector.persist(eventId, objDef, map, false)
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, map, false)
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
         and: "cleanup"
@@ -290,7 +374,6 @@ class LdapConnectorSpec extends Specification {
         given:
         UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null)
 
-        when:
         addOu("namespace")
 
         // create initial entry for cn with the primary key of createUid
@@ -298,17 +381,21 @@ class LdapConnectorSpec extends Specification {
         addTestEntry(dn, createUid, cn)
         assert ((DirContextAdapter) ldapTemplate.lookup(dn)).getStringAttribute("description") == "initial test"
 
-        // update the entry for cn, but change the primary key within the entry to updateUid
         String eventId = "eventId"
-        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, [
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        // update the entry for cn, but change the primary key within the entry to updateUid
+        Map<String, Object> attrMap = [
                 dn         : dn,
                 uid        : updateUid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                objectClass: objectClasses,
                 sn         : "User",
                 cn         : cn,
                 mail       : [],
                 description: ["updated"]
-        ], false)
+        ]
+
+        when:
+        boolean isModified = ldapConnector.persist(eventId, uidObjectDef, null, attrMap, false)
 
         List<Map<String, Object>> retrieved = searchForUid(updateUid)
         Map<String, Object> foundDn = retrieved.find {
@@ -324,10 +411,160 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == 1
         foundDn.dn == dn
         foundDn.description == "updated"
-        1 * updateEventCallback.success("eventId", uidObjectDef, updateUid, _, _, _, _)
+        1 * updateEventCallback.receive(
+                new LdapUpdateEventMessage(
+                        isSuccess: true,
+                        eventId: eventId,
+                        objectDef: uidObjectDef,
+                        foundMethod: FoundObjectMethod.BY_DN_MISMATCHED_KEYS,
+                        pkey: updateUid,
+                        oldAttributes: [
+                                uid        : createUid,
+                                description: "initial test",
+                                sn         : "User",
+                                cn         : cn,
+                                objectClass: objectClasses
+                        ],
+                        dn: dn,
+                        newAttributes: [
+                                uid        : updateUid,
+                                objectClass: objectClasses,
+                                sn         : "User",
+                                cn         : cn,
+                                description: "updated"
+                        ]
+                )
+        )
 
         where:
         description                           | cn         | createUid | updateUid
         "test update with primary key change" | "testName" | "1"       | "2"
+    }
+
+    void "test asynchronous callback"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        String uid = "1"
+
+        LdapConnector ldapConnector = new LdapConnector(
+                ldapTemplate: ldapTemplate,
+                isSynchronousCallback: false,
+                insertEventCallbacks: [insertEventCallback],
+                updateEventCallbacks: [updateEventCallback],
+                renameEventCallbacks: [renameEventCallback],
+                deleteEventCallbacks: [deleteEventCallback]
+        )
+
+        LdapInsertEventMessage msg = null
+        insertEventCallback.receive(_) >> { LdapInsertEventMessage _msg ->
+            msg = _msg
+        }
+
+        when:
+        ldapConnector.start()
+        addOu("people")
+        Boolean didCreate = null
+        synchronized (ldapConnector.callbackMonitorThread) {
+            didCreate = ldapConnector.persist(eventId, objDef, null, [
+                    dn         : dn,
+                    uid        : uid,
+                    objectClass: objectClasses,
+                    sn         : "User",
+                    cn         : "Test User",
+                    description: "initial test"
+            ], false)
+            // wait for notification that the asynchronous callback queue was emptied
+            ldapConnector.callbackMonitorThread.wait(20000)
+        }
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+        ldapConnector.stop()
+
+        then:
+        didCreate
+        retrieved.size() == 1
+        retrieved.first().description == "initial test"
+        msg.isSuccess
+        msg.eventId == eventId
+        msg.objectDef == objDef
+        msg.pkey == uid
+        msg.dn == dn
+        msg.newAttributes == [
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ]
+        msg.globallyUniqueIdentifier
+    }
+
+    @Unroll("#description")
+    void "test deletes"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        String uid = "1"
+
+        when:
+        addOu("people")
+        addOu("expired people")
+
+        // initial create
+        assert ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ], false)
+
+        if (createDupe) {
+            // duplicate
+            addTestEntry("uid=$uid,ou=expired people,dc=berkeley,dc=edu", uid)
+            assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
+        }
+
+        boolean wasDeleted = ldapConnector.persist(eventId, objDef, null, [dn: delDn, uid: delUid], true)
+
+        Map<String, Object> retrievedByDn = lookupDn(dn)
+        List<Map<String, Object>> retrievedByUid = searchForUid(uid)
+
+        and: "cleanup"
+        if (retrievedByDn) {
+            deleteDn(dn)
+        }
+        List<Map<String, Object>> uidsToCleanUp = searchForUid(uid)
+        uidsToCleanUp?.each { Map<String, Object> map ->
+            deleteDn(map.dn.toString())
+        }
+        deleteOu("people")
+        deleteOu("expired people")
+
+        then:
+        retrievedByUid.size() == remainingUids
+        (!remainingDN ? retrievedByDn == null : retrievedByDn != null)
+        deletes * deleteEventCallback.receive(_)
+        (deletes ? wasDeleted : !wasDeleted)
+
+        where:
+        description                                               | removeDupePkeys | createDupe | delDn                                | delUid   | remainingDN | remainingUids | deletes
+        "delete by DN"                                            | true            | false      | "uid=1,ou=people,dc=berkeley,dc=edu" | null     | false       | 0             | 1
+        "delete by uid"                                           | true            | false      | null                                 | "1"      | false       | 0             | 1
+        "delete all by uid"                                       | true            | true       | null                                 | "1"      | false       | 0             | 2
+        "delete all by dn and uid"                                | true            | true       | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      | false       | 0             | 2
+        "delete by dn but not uids because dupe removal disabled" | false           | true       | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      | false       | 1             | 1
+        "no delete by uid because dupe removal disabled"          | false           | true       | null                                 | "1"      | true        | 2             | 0
+        "attempt deletion of non-existant DN"                     | true            | false      | "uid=foobar,dc=berkeley,dc=edu"      | null     | true        | 1             | 0
+        "attempt deletion of non-existant uid"                    | true            | false      | null                                 | "foobar" | true        | 1             | 0
     }
 }

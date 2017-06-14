@@ -27,12 +27,32 @@
 
 package edu.berkeley.bidms.connector.ldap
 
-import edu.berkeley.bidms.connector.ConnectorException
-import groovy.transform.InheritConstructors
-
 /**
- * Exception thrown within LdapConnector functionality.
+ * Indicates how an object was found when an object is updated.
  */
-@InheritConstructors
-class LdapConnectorException extends ConnectorException{
+enum FoundObjectMethod {
+    /**
+     * Indicates the object was found by its globally unique identifier or
+     * its primary key and the object's DN matches the desired DN.
+     */
+    BY_DN_MATCHED_KEY,
+
+    /**
+     * Indicates the object was found by its DN but the object's globally
+     * unique identifier and primary key don't match the desired values.
+     */
+    BY_DN_MISMATCHED_KEYS,
+
+    /**
+     * Indicates the object was found by its globally unique identifier or
+     * its primary key but the object's DN does not match the desired DN.
+     */
+    BY_MATCHED_KEY_DN_MISMATCH,
+
+    /**
+     * Indicates there are multiple objects in the directory with the same
+     * primary key but none of them match the desired DN.  The first one
+     * found was selected.
+     */
+    BY_FIRST_FOUND
 }

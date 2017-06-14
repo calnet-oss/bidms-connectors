@@ -25,14 +25,29 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap
+package edu.berkeley.bidms.connector.ldap.event.message
 
-import edu.berkeley.bidms.connector.ConnectorException
-import groovy.transform.InheritConstructors
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
 
 /**
- * Exception thrown within LdapConnector functionality.
+ * Delete messages sent to callbacks.
  */
-@InheritConstructors
-class LdapConnectorException extends ConnectorException{
+@ToString(includeNames = true)
+@EqualsAndHashCode
+class LdapDeleteEventMessage implements LdapEventMessage {
+    LdapEventType getEventType() {
+        return LdapEventType.DELETE_EVENT
+    }
+
+    boolean isSuccess
+    String eventId
+    LdapObjectDefinition objectDef
+    LdapCallbackContext context
+    String pkey
+    String dn
+    Throwable exception
 }

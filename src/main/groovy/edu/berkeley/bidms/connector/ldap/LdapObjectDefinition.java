@@ -31,15 +31,96 @@ import edu.berkeley.bidms.connector.ObjectDefinition;
 import org.springframework.ldap.query.LdapQuery;
 
 public interface LdapObjectDefinition extends ObjectDefinition {
+    /**
+     * The globally unique identifier attribute in the directory, which is
+     * typically an operational attribute.
+     * <p>
+     * This is often entryUUID in LDAP directories and objectGUID in Active
+     * Directory directories.
+     *
+     * @return The globally unique identifier attribute name.
+     */
+    String getGloballyUniqueIdentifierAttributeName();
+
+    /**
+     * The primary key attribute in the directory.  For a person, this is
+     * often uid.
+     *
+     * @return The primary key attribute name.
+     */
     String getPrimaryKeyAttributeName();
 
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * globally unique identifier or a primary key value.
+     *
+     * @param uniqueIdentifier The globally unique identifier value.
+     * @param pkey             The primary key value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their keys.
+     */
+    LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey);
+
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * globally unique identifier.
+     *
+     * @param uniqueIdentifier The globally unique identifier value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their globally unique identifier.
+     */
+    LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier);
+
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * primary key value.
+     *
+     * @param pkey The primary key value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their primary key.
+     */
     LdapQuery getLdapQueryForPrimaryKey(String pkey);
 
+    /**
+     * Implements criteria for successfully accepting a DN as a good entry
+     * when resolving multiple entries when searching by primary key.  In
+     * some (probably rare) cases, the directory may contain entries with the
+     * same primary key but are known not ever to be a "primary" entry.  For
+     * example, it's been observed that a vendor LDAP directory will leave
+     * undesired replication artifacts in the directory when replicating
+     * within a cluster.  These replication artifacts are to be disregarded
+     * and deleted as undesired duplicates.
+     * <p>
+     * Note this is *only* used when resolving results when searching by
+     * primary key.
+     *
+     * @param dn The dn to evaluate for acceptance.
+     * @return true if the dn is accepted or false if the dn is rejected.
+     */
     boolean acceptAsExistingDn(String dn);
 
-    boolean keepExistingAttributesWhenUpdating();
+    /**
+     * @return true indicates that when updating, the existing attributes
+     * that aren't in the update map will be kept instead of removed.
+     */
+    boolean isKeepExistingAttributesWhenUpdating();
 
-    boolean removeDuplicatePrimaryKeys();
+    /**
+     * @return true indicates that entires in the directory with the same
+     * primary key that aren't considered the primary entry will be removed.
+     * The primary entry is decided by the first entry encountered where
+     * acceptAsExistingDn(dn) returns true.
+     */
+    boolean isRemoveDuplicatePrimaryKeys();
 
+    /**
+     * @return The objectClass to filter by when searching for primary keys.
+     */
+    String getObjectClass();
+
+    /**
+     * @return A list of attribute names, which must be multi-value
+     * attributes, to append to rather than overwrite when updating.
+     */
     String[] getAppendOnlyAttributeNames();
 }

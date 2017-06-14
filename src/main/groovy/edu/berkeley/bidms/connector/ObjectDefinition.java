@@ -27,5 +27,9 @@
 
 package edu.berkeley.bidms.connector;
 
+/**
+ * Interface for an object definition that connectors use to describe
+ * configuration aspects of objects within the resource.
+ */
 public interface ObjectDefinition {
 }
