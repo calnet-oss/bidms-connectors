@@ -51,5 +51,6 @@ class LdapRenameEventMessage implements LdapEventMessage {
     String pkey
     String oldDn
     String newDn
+    Object globallyUniqueIdentifier
     Throwable exception
 }

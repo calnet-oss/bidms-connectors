@@ -63,6 +63,13 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     private String[] appendOnlyAttributeNames;
 
+    /**
+     * true indicates that when an insert or rename happens, the
+     * globally unique identifier is retrieved after the insert or rename and
+     * passed back in the insert or rename callback message.
+     */
+    private boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+
     public UidObjectDefinition() {
     }
 
@@ -70,12 +77,14 @@ public class UidObjectDefinition implements LdapObjectDefinition {
             String objectClass,
             boolean keepExistingAttributesWhenUpdating,
             boolean removeDuplicatePrimaryKeys,
-            String[] appendOnlyAttributeNames
+            String[] appendOnlyAttributeNames,
+            boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks
     ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
+        this.passGloballyUniqueIdentifierToInsertAndRenameCallbacks = passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
     }
 
     /**
@@ -245,5 +254,38 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
+    }
+
+    /**
+     * @return true indicates that when an insert or rename happens, the
+     * globally unique identifier is retrieved after the insert or rename and
+     * passed back in the insert or rename callback message.
+     */
+    public boolean isPassGloballyUniqueIdentifierToInsertAndRenameCallbacks() {
+        return passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+    }
+
+    /**
+     * @param passGloballyUniqueIdentifierToInsertAndRenameCallbacks true indicates
+     *                                                               that when
+     *                                                               an insert
+     *                                                               or rename
+     *                                                               happens,
+     *                                                               the globally
+     *                                                               unique
+     *                                                               identifier
+     *                                                               is retrieved
+     *                                                               after the
+     *                                                               insert
+     *                                                               or rename
+     *                                                               and passed
+     *                                                               back in
+     *                                                               the insert
+     *                                                               or rename
+     *                                                               callback
+     *                                                               message
+     */
+    public void setPassGloballyUniqueIdentifierToInsertAndRenameCallbacks(boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks) {
+        this.passGloballyUniqueIdentifierToInsertAndRenameCallbacks = passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
     }
 }

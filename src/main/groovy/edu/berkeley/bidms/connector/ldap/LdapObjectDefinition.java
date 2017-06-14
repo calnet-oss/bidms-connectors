@@ -54,8 +54,9 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * Get a Spring LdapQuery object to query the directory for objects by a
      * globally unique identifier.
      *
-     * @param pkey When searching by globally unique identifier, the object
-     *        must also match this expected primary key.
+     * @param pkey             When searching by globally unique identifier,
+     *                         the object must also match this expected
+     *                         primary key.
      * @param uniqueIdentifier The globally unique identifier value.
      * @return The Spring LdapQuery object to query the directory for objects
      * by their globally unique identifier.
@@ -114,4 +115,11 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * attributes, to append to rather than overwrite when updating.
      */
     String[] getAppendOnlyAttributeNames();
+
+    /**
+     * @return true indicates that when an insert or rename happens, the
+     * globally unique identifier is retrieved after the insert or rename and
+     * passed back in the insert or rename callback message.
+     */
+    boolean isPassGloballyUniqueIdentifierToInsertAndRenameCallbacks();
 }

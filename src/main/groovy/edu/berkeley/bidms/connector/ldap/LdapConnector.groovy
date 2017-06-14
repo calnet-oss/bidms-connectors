@@ -294,8 +294,21 @@ class LdapConnector implements Connector {
             String newDn
     ) throws LdapConnectorException {
         Throwable exception
+        Object directoryUniqueIdentifier = null
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
+
+            if (objectDef.passGloballyUniqueIdentifierToInsertAndRenameCallbacks &&
+                    objectDef.globallyUniqueIdentifierAttributeName &&
+                    renameEventCallbacks) {
+                // Get the possibly-changed unique identifier for the
+                // renamed object so we can pass it back in the rename
+                // callback
+                directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, newDn)
+                if (!directoryUniqueIdentifier) {
+                    log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just renamed entry of $newDn")
+                }
+            }
         }
         catch (Throwable t) {
             exception = t
@@ -310,6 +323,7 @@ class LdapConnector implements Connector {
                     pkey: pkey,
                     oldDn: oldDn,
                     newDn: newDn,
+                    globallyUniqueIdentifier: directoryUniqueIdentifier,
                     exception: exception
             ))
         }
@@ -483,23 +497,13 @@ class LdapConnector implements Connector {
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
 
-            if (objectDef.globallyUniqueIdentifierAttributeName && insertEventCallbacks) {
+            if (objectDef.passGloballyUniqueIdentifierToInsertAndRenameCallbacks &&
+                    objectDef.globallyUniqueIdentifierAttributeName &&
+                    insertEventCallbacks) {
                 // Get the newly-created directory unique identifier so we
                 // can pass it back in the insert callback
-                DirContextAdapter newEntry = null
-                try {
-                    newEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn, [objectDef.globallyUniqueIdentifierAttributeName] as String[])
-                }
-                catch (NameNotFoundException ignored) {
-                    // no-op
-                }
-                if (!newEntry) {
-                    throw new LdapConnectorException("Unable to lookup $dn right after inserting this DN")
-                }
-                Attribute attr = newEntry?.attributes?.get(objectDef.globallyUniqueIdentifierAttributeName)
-                if (attr?.size()) {
-                    directoryUniqueIdentifier = attr.get()
-                } else {
+                directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, dn)
+                if (!directoryUniqueIdentifier) {
                     log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just inserted entry of $dn")
                 }
             }
@@ -780,7 +784,7 @@ class LdapConnector implements Connector {
                 }
             } else {
                 // Doesn't already exist -- create
-                if(!dn) {
+                if (!dn) {
                     throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
                 }
                 insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
@@ -906,6 +910,39 @@ class LdapConnector implements Connector {
             return null
         } else {
             throw new RuntimeException("Type ${value.getClass().name} is not a recognized list, string, number, boolean or null type")
+        }
+    }
+
+    /**
+     * Retrieve the globally unique identifier for a DN.
+     *
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param dn Distinguished name to retrieve the globally unique identifier for
+     * @return The globally unique identifier value
+     */
+    Object getGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String dn) {
+        if (objectDef.globallyUniqueIdentifierAttributeName) {
+            DirContextAdapter newEntry = null
+            try {
+                newEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn, [objectDef.globallyUniqueIdentifierAttributeName] as String[])
+            }
+            catch (NameNotFoundException ignored) {
+                // no-op
+            }
+            if (newEntry) {
+                Attribute attr = newEntry?.attributes?.get(objectDef.globallyUniqueIdentifierAttributeName)
+                if (attr?.size()) {
+                    return attr.get()
+                } else {
+                    return null
+                }
+            } else {
+                return null
+            }
+        } else {
+            throw new LdapConnectorException("objectDef has no globallyUniqueIdentifierAttributeName set")
         }
     }
 }

@@ -155,7 +155,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[])
+        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[], true)
 
         when:
         addOu("people")
@@ -206,7 +206,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null, true)
         String eventId = "eventId"
 
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
@@ -276,6 +276,7 @@ class LdapConnectorSpec extends Specification {
             assert msg.pkey == uid
             assert msg.oldDn in renameOldDn
             assert msg.newDn == dn
+            assert msg.globallyUniqueIdentifier
         }
         updates * updateEventCallback.receive(new LdapUpdateEventMessage(
                 success: true,
@@ -336,7 +337,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test persist return value on a non-modification"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true)
 
         when:
         addOu("people")
@@ -372,7 +373,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null, true)
 
         addOu("namespace")
 
@@ -443,7 +444,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test asynchronous callback"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -508,7 +509,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test deletes"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null, true)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -570,7 +571,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates without specifying a DN"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -610,5 +611,43 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         1 * insertEventCallback.receive(_)
         1 * updateEventCallback.receive(_)
+    }
+
+    void "test retrieving globally unique identifier"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        addOu("people")
+        // initial create
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ], false)
+
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        String uniqueIdentifier = ldapConnector.getGloballyUniqueIdentifier(eventId, objDef, null, dn)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+        ldapConnector.stop()
+
+        then:
+        didCreate
+        retrieved.size() == 1
+        retrieved.first().description == "initial test"
+        1 * insertEventCallback.receive(_)
+        uniqueIdentifier?.length()
     }
 }
