@@ -809,7 +809,7 @@ class LdapConnector implements Connector {
                         foundObjectMethod,
                         pkey,
                         existingEntry,
-                        dn,
+                        existingEntry.dn.toString(),
                         newReplaceAttributeMap,
                         newAppendOnlyAttributeMap
                 )) {
