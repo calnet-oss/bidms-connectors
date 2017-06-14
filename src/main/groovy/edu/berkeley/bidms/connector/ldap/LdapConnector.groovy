@@ -676,6 +676,7 @@ class LdapConnector implements Connector {
         attrMapCopy.remove("dn")
 
         boolean isModified = false
+        boolean wasRenamed = false
 
         if (!isDelete) {
             //
@@ -783,6 +784,7 @@ class LdapConnector implements Connector {
                         throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
                     }
                     isModified = true
+                    wasRenamed = true
                 }
 
                 Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
@@ -816,14 +818,25 @@ class LdapConnector implements Connector {
                     isModified = true
                 }
 
+                //
                 // If we're updating with renaming disabled and the DN on
                 // the existing object is different than the "requested DN",
                 // then report a possible change of global unique identifier
                 // via a callback.
-                if (!((LdapObjectDefinition) objectDef).renamingEnabled &&
-                        ((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName &&
+                //
+                // Do the same if the globally unique identifier is missing
+                // from the input.  We want to give the caller the chance
+                // to store it and send it next time in the attrMap.
+                //
+                boolean renamingDisabledCase = !((LdapObjectDefinition) objectDef).renamingEnabled &&
+                        uniqueIdentifierAttrName &&
                         uniqueIdentifierEventCallbacks &&
-                        dn && existingEntry.dn.toString() != dn) {
+                        dn && existingEntry.dn.toString() != dn
+                boolean missingUniqIdCase = !wasRenamed &&
+                        uniqueIdentifierAttrName &&
+                        uniqueIdentifierEventCallbacks &&
+                        !attrMap[uniqueIdentifierAttrName]
+                if (renamingDisabledCase || missingUniqIdCase) {
                     // Renaming disabled and the requested dn doesn't match
                     // the actual dn, indicating a rename from somewhere
                     // else, which could have resulted in a globally unique
