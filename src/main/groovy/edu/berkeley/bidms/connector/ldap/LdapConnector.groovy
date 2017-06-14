@@ -311,7 +311,7 @@ class LdapConnector implements Connector {
 
             if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
                 // Get the possibly-changed unique identifier for the
-                // renamed object so we can pass it back in the rename
+                // renamed object so we can pass it back in the unique identifier
                 // callback
                 directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, newDn)
                 if (!directoryUniqueIdentifier) {
@@ -801,6 +801,7 @@ class LdapConnector implements Connector {
                 if (!existingEntry.updateMode) {
                     existingEntry.updateMode = true
                 }
+
                 if (update(
                         eventId,
                         (LdapObjectDefinition) objectDef,
@@ -813,6 +814,38 @@ class LdapConnector implements Connector {
                         newAppendOnlyAttributeMap
                 )) {
                     isModified = true
+                }
+
+                // If we're updating with renaming disabled and the DN on
+                // the existing object is different than the "requested DN",
+                // then report a possible change of global unique identifier
+                // via a callback.
+                if (!((LdapObjectDefinition) objectDef).renamingEnabled &&
+                        ((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName &&
+                        uniqueIdentifierEventCallbacks &&
+                        dn && existingEntry.dn.toString() != dn) {
+                    // Renaming disabled and the requested dn doesn't match
+                    // the actual dn, indicating a rename from somewhere
+                    // else, which could have resulted in a globally unique
+                    // identifier change.
+                    Object directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, existingEntry.dn.toString())
+                    if (!directoryUniqueIdentifier) {
+                        log.warn("The ${((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just updated entry of $newDn")
+                    } else {
+                        if (directoryUniqueIdentifier) {
+                            deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
+                                    success: true,
+                                    causingEvent: LdapEventType.UPDATE_EVENT,
+                                    eventId: eventId,
+                                    objectDef: (LdapObjectDefinition) objectDef,
+                                    context: (LdapCallbackContext) context,
+                                    pkey: pkey,
+                                    oldDn: dn,
+                                    newDn: existingEntry.dn.toString(),
+                                    globallyUniqueIdentifier: directoryUniqueIdentifier
+                            ))
+                        }
+                    }
                 }
             } else {
                 // Doesn't already exist -- create

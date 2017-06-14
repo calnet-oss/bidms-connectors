@@ -510,7 +510,6 @@ class LdapConnectorSpec extends Specification {
                 cn         : "Test User",
                 description: "initial test"
         ]
-        msg.globallyUniqueIdentifier
     }
 
     @Unroll("#description")
@@ -586,14 +585,7 @@ class LdapConnectorSpec extends Specification {
         when:
         addOu("people")
         // initial create
-        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : "uid=1,ou=people,dc=berkeley,dc=edu",
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test"
-        ], false)
+        addTestEntry("uid=1,ou=people,dc=berkeley,dc=edu", uid)
 
         // update
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
@@ -609,15 +601,62 @@ class LdapConnectorSpec extends Specification {
         and: "cleanup"
         deleteDn("uid=1,ou=people,dc=berkeley,dc=edu")
         deleteOu("people")
-        ldapConnector.stop()
 
         then:
-        didCreate
         didUpdate
         retrieved.size() == 1
         retrieved.first().description == "updated"
-        1 * insertEventCallback.receive(_)
         1 * updateEventCallback.receive(_)
+        0 * uniqueIdentifierEventCallback.receive(_)
+    }
+
+    void "test updates with renaming disabled"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, false)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+
+        when:
+        addOu("people")
+        // initial create
+        addTestEntry("uid=1,ou=people,dc=berkeley,dc=edu", uid)
+
+        // update
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : "uid=1,ou=expired people,dc=berkeley,dc=edu", // different dn than what we created with
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "updated"
+        ], false)
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn("uid=1,ou=people,dc=berkeley,dc=edu")
+        deleteOu("people")
+
+        then:
+        didUpdate
+        retrieved.size() == 1
+        // not renamed
+        retrieved.first().dn == "uid=1,ou=people,dc=berkeley,dc=edu" // not renamed
+        retrieved.first().description == "updated"
+        1 * updateEventCallback.receive(_)
+        // but a uniqueId callback was produced signalling possible globally unique identifier change
+        1 * uniqueIdentifierEventCallback.receive(_) >> { LdapUniqueIdentifierEventMessage msg ->
+            assert msg.success
+            assert msg.causingEvent == LdapEventType.UPDATE_EVENT
+            assert msg.eventId == eventId
+            assert msg.objectDef == objDef
+            assert msg.pkey == "1"
+            assert msg.oldDn == "uid=1,ou=expired people,dc=berkeley,dc=edu" // requested dn
+            assert msg.newDn == "uid=1,ou=people,dc=berkeley,dc=edu" // actual dn
+            assert msg.globallyUniqueIdentifier
+
+        }
     }
 
     void "test retrieving globally unique identifier"() {
@@ -648,7 +687,6 @@ class LdapConnectorSpec extends Specification {
         and: "cleanup"
         deleteDn(dn)
         deleteOu("people")
-        ldapConnector.stop()
 
         then:
         didCreate
