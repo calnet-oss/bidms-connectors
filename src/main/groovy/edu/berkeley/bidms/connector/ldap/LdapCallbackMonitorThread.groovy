@@ -28,10 +28,12 @@
 package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import groovy.util.logging.Slf4j
 
 /**
  * Monitor's the LdapConnector's callback queue and invokes callbacks asynchronously when messages are present on the queue.
  */
+@Slf4j
 class LdapCallbackMonitorThread extends Thread {
     /**
      * Call requestStop() to request a stop of this monitor thread.
@@ -56,16 +58,23 @@ class LdapCallbackMonitorThread extends Thread {
             try {
                 synchronized (this) {
                     wait(1000)
-                    LdapEventMessage eventMessage = null
-                    int dequeueCount = 0
-                    while (!requestStop && (eventMessage = ldapConnector.pollCallbackQueue())) {
-                        if (eventMessage != null) {
+                }
+                LdapEventMessage eventMessage = null
+                int dequeueCount = 0
+                while (!requestStop && (eventMessage = ldapConnector.pollCallbackQueue())) {
+                    if (eventMessage != null) {
+                        try {
                             ldapConnector.invokeCallback(eventMessage)
-                            dequeueCount++
                         }
+                        catch (Exception e) {
+                            log.error("There was an asynchronous callback exception", e)
+                        }
+                        dequeueCount++
                     }
-                    if (dequeueCount) {
-                        notify()
+                }
+                if (dequeueCount) {
+                    synchronized (this) {
+                        notifyAll()
                     }
                 }
             }
