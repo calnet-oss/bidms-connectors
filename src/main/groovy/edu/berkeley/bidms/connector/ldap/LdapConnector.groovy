@@ -83,6 +83,14 @@ class LdapConnector implements Connector {
     List<LdapInsertEventCallback> insertEventCallbacks = []
 
     /**
+     * Callbacks to be called when the unique identifier has been created or
+     * possibly changed.  It's possible this callback is called on rename
+     * and update events where the directory has not actually changed the
+     * unique identifier.
+     */
+    List<LdapUniqueIdentifierEventCallback> uniqueIdentifierEventCallbacks = []
+
+    /**
      * For queuing up asynchronous callback messages
      */
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
@@ -139,6 +147,9 @@ class LdapConnector implements Connector {
                 break
             case LdapEventType.DELETE_EVENT:
                 deleteEventCallbacks?.each { it.receive((LdapDeleteEventMessage) eventMessage) }
+                break
+            case LdapEventType.UNIQUE_IDENTIFIER_EVENT:
+                uniqueIdentifierEventCallbacks?.each { it.receive((LdapUniqueIdentifierEventMessage) eventMessage) }
                 break
             default:
                 throw new RuntimeException("Unknown LdapEventType for event message: ${eventMessage.eventType}")
@@ -298,9 +309,7 @@ class LdapConnector implements Connector {
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
 
-            if (objectDef.passGloballyUniqueIdentifierToInsertAndRenameCallbacks &&
-                    objectDef.globallyUniqueIdentifierAttributeName &&
-                    renameEventCallbacks) {
+            if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
                 // Get the possibly-changed unique identifier for the
                 // renamed object so we can pass it back in the rename
                 // callback
@@ -323,9 +332,22 @@ class LdapConnector implements Connector {
                     pkey: pkey,
                     oldDn: oldDn,
                     newDn: newDn,
-                    globallyUniqueIdentifier: directoryUniqueIdentifier,
                     exception: exception
             ))
+
+            if (!exception && directoryUniqueIdentifier) {
+                deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
+                        success: true,
+                        causingEvent: LdapEventType.RENAME_EVENT,
+                        eventId: eventId,
+                        objectDef: objectDef,
+                        context: context,
+                        pkey: pkey,
+                        oldDn: oldDn,
+                        newDn: newDn,
+                        globallyUniqueIdentifier: directoryUniqueIdentifier
+                ))
+            }
         }
     }
 
@@ -497,9 +519,7 @@ class LdapConnector implements Connector {
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
 
-            if (objectDef.passGloballyUniqueIdentifierToInsertAndRenameCallbacks &&
-                    objectDef.globallyUniqueIdentifierAttributeName &&
-                    insertEventCallbacks) {
+            if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
                 // Get the newly-created directory unique identifier so we
                 // can pass it back in the insert callback
                 directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, dn)
@@ -521,9 +541,21 @@ class LdapConnector implements Connector {
                     pkey: pkey,
                     dn: dn,
                     newAttributes: convertedNewAttributeMap ?: attributeMap,
-                    globallyUniqueIdentifier: directoryUniqueIdentifier,
                     exception: exception
             ))
+
+            if (!exception && directoryUniqueIdentifier) {
+                deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
+                        success: true,
+                        causingEvent: LdapEventType.INSERT_EVENT,
+                        eventId: eventId,
+                        objectDef: objectDef,
+                        context: context,
+                        pkey: pkey,
+                        newDn: dn,
+                        globallyUniqueIdentifier: directoryUniqueIdentifier
+                ))
+            }
         }
     }
 
@@ -549,18 +581,18 @@ class LdapConnector implements Connector {
      * When attempting an insert of a new DN, if there is already an
      * existing object in the directory with the primary key, the existing
      * object will be updated instead and the DN will be renamed to your
-     * requested DN.  If there are multiple objects already in the directory
-     * with the same primary key but different DNs and
-     * objectDef.isRemoveDuplicatePrimaryKeys() returns true, the duplicates
-     * will be deleted.
+     * requested DN, if objectDef.renamingEnabled is true.  If there are
+     * multiple objects already in the directory with the same primary key
+     * but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
+     * returns true, the duplicates will be deleted.
      *
      * When attempting an update of an object but the DN does not exist, and
      * there is already an existing object in the directory with the primary
      * key, the existing object will be updated and the DN will be renamed
-     * to your requested DN.  If there are multiple objects already in the
-     * directory with the same primary key but different DNs and
-     * objectDef.isRemoveDuplicatePrimaryKeys() returns true, the duplicates
-     * will be deleted.
+     * to your requested DN, if objectDef.renamingEnabled is true.  If there
+     * are multiple objects already in the directory with the same primary
+     * key but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
+     * returns true, the duplicates will be deleted.
      *
      * When inserting or updating and multiple objects with the same primary
      * key are found, there is an algorithm for determining which one to
@@ -738,7 +770,7 @@ class LdapConnector implements Connector {
                 String existingDn = existingEntry.dn
 
                 // Check for need to move DNs
-                if (dn && existingDn != dn) {
+                if (((LdapObjectDefinition) objectDef).renamingEnabled && dn && existingDn != dn) {
                     // Move DN
                     rename(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, existingDn, dn)
                     try {
@@ -919,7 +951,8 @@ class LdapConnector implements Connector {
      * @param eventId Event id
      * @param objectDef Object definition
      * @param context Callback context
-     * @param dn Distinguished name to retrieve the globally unique identifier for
+     * @param dn Distinguished name to retrieve the globally unique
+     *        identifier for
      * @return The globally unique identifier value
      */
     Object getGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String dn) {

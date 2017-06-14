@@ -52,6 +52,5 @@ class LdapInsertEventMessage implements LdapEventMessage {
     String pkey
     String dn
     Map<String, Object> newAttributes
-    Object globallyUniqueIdentifier
     Throwable exception
 }

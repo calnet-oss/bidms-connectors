@@ -27,14 +27,8 @@
 
 package edu.berkeley.bidms.connector.ldap
 
-import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
-import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
-import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
-import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
-import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.event.*
+import edu.berkeley.bidms.connector.ldap.event.message.*
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
@@ -62,13 +56,15 @@ class LdapConnectorSpec extends Specification {
     LdapUpdateEventCallback updateEventCallback = Mock(LdapUpdateEventCallback)
     LdapRenameEventCallback renameEventCallback = Mock(LdapRenameEventCallback)
     LdapDeleteEventCallback deleteEventCallback = Mock(LdapDeleteEventCallback)
+    LdapUniqueIdentifierEventCallback uniqueIdentifierEventCallback = Mock(LdapUniqueIdentifierEventCallback)
 
     LdapConnector ldapConnector = new LdapConnector(
             isSynchronousCallback: true,
             insertEventCallbacks: [insertEventCallback],
             updateEventCallbacks: [updateEventCallback],
             renameEventCallbacks: [renameEventCallback],
-            deleteEventCallbacks: [deleteEventCallback]
+            deleteEventCallbacks: [deleteEventCallback],
+            uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback]
     )
 
     void setupSpec() {
@@ -276,7 +272,6 @@ class LdapConnectorSpec extends Specification {
             assert msg.pkey == uid
             assert msg.oldDn in renameOldDn
             assert msg.newDn == dn
-            assert msg.globallyUniqueIdentifier
         }
         updates * updateEventCallback.receive(new LdapUpdateEventMessage(
                 success: true,
@@ -315,24 +310,35 @@ class LdapConnectorSpec extends Specification {
                     cn         : "Test User",
                     description: "updated"
             ]
+        }
+        uniqIdCBs * uniqueIdentifierEventCallback.receive(_) >> { LdapUniqueIdentifierEventMessage msg ->
+            assert msg.success
+            assert msg.causingEvent
+            assert msg.eventId == eventId
+            assert msg.objectDef == uidObjectDef
+            assert msg.pkey == uid
+            if (renameOldDn) {
+                assert msg.oldDn in renameOldDn
+            }
+            assert msg.newDn == dn
             assert msg.globallyUniqueIdentifier
         }
 
         where:
-        description                                                                                          | createFirst | srchFirstUUID | createDupe | doDelete | removeDupes | uid | dn                                           | deletes | renames | updates | inserts | foundMethod                                  | delPkey | delDn                                                                                | renameOldDn
-        "test creation"                                                                                      | false       | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1       | null                                         | null    | null                                                                                 | null
-        "test update, find by pkey"                                                                          | true        | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
-        "test update, find by entryUUID"                                                                     | true        | true          | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
-        "test rename, find by pkey but mismatching dn"                                                       | true        | false         | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
-        "test rename, find by entryUUID but mismatching dn"                                                  | true        | true          | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
-        "test update by finding pkey and remove nonmatching dupe"                                            | true        | false         | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
-        "test update by finding entryUUID and remove nonmatching dupe"                                       | true        | true          | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
-        "test update by finding pkey and don't remove nonmatching dupe"                                      | true        | false         | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
-        "test update by finding entryUUID and don't remove nonmatching dupe"                                 | true        | true          | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
-        "test update with two dupes by finding by first-found, rename one, delete the other"                 | true        | false         | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | FoundObjectMethod.BY_FIRST_FOUND             | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"]
-        "test update with two dupes by finding by entryUUID but mismatched dn, rename one, delete the other" | true        | true          | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | ["uid=1,ou=people,dc=berkeley,dc=edu"]
-        "test delete"                                                                                        | true        | false         | false      | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0       | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu"]                                               | null
-        "test multi-delete"                                                                                  | true        | false         | true       | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0       | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | null
+        description                                                                                          | createFirst | srchFirstUUID | createDupe | doDelete | removeDupes | uid | dn                                           | deletes | renames | updates | inserts | uniqIdCBs | foundMethod                                  | delPkey | delDn                                                                                | renameOldDn
+        "test creation"                                                                                      | false       | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 0       | 1       | 1         | null                                         | null    | null                                                                                 | null
+        "test update, find by pkey"                                                                          | true        | false         | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update, find by entryUUID"                                                                     | true        | true          | false      | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test rename, find by pkey but mismatching dn"                                                       | true        | false         | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | 1         | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test rename, find by entryUUID but mismatching dn"                                                  | true        | true          | false      | false    | true        | "1" | "uid=1,ou=expired people,dc=berkeley,dc=edu" | 0       | 1       | 1       | 0       | 1         | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | null    | null                                                                                 | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test update by finding pkey and remove nonmatching dupe"                                            | true        | false         | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
+        "test update by finding entryUUID and remove nonmatching dupe"                                       | true        | true          | true       | false    | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | null
+        "test update by finding pkey and don't remove nonmatching dupe"                                      | true        | false         | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update by finding entryUUID and don't remove nonmatching dupe"                                 | true        | true          | true       | false    | false       | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 0       | 0       | 1       | 0       | 0         | FoundObjectMethod.BY_DN_MATCHED_KEY          | null    | null                                                                                 | null
+        "test update with two dupes by finding by first-found, rename one, delete the other"                 | true        | false         | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | 1         | FoundObjectMethod.BY_FIRST_FOUND             | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"]
+        "test update with two dupes by finding by entryUUID but mismatched dn, rename one, delete the other" | true        | true          | true       | false    | true        | "1" | "uid=1,ou=the middle,dc=berkeley,dc=edu"     | 1       | 1       | 1       | 0       | 1         | FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH | ["1"]   | ["uid=1,ou=expired people,dc=berkeley,dc=edu"]                                       | ["uid=1,ou=people,dc=berkeley,dc=edu"]
+        "test delete"                                                                                        | true        | false         | false      | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 1       | 0       | 0       | 0       | 0         | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu"]                                               | null
+        "test multi-delete"                                                                                  | true        | false         | true       | true     | true        | "1" | "uid=1,ou=people,dc=berkeley,dc=edu"         | 2       | 0       | 0       | 0       | 0         | null                                         | ["1"]   | ["uid=1,ou=people,dc=berkeley,dc=edu", "uid=1,ou=expired people,dc=berkeley,dc=edu"] | null
     }
 
     void "test persist return value on a non-modification"() {
@@ -456,7 +462,8 @@ class LdapConnectorSpec extends Specification {
                 insertEventCallbacks: [insertEventCallback],
                 updateEventCallbacks: [updateEventCallback],
                 renameEventCallbacks: [renameEventCallback],
-                deleteEventCallbacks: [deleteEventCallback]
+                deleteEventCallbacks: [deleteEventCallback],
+                uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback]
         )
 
         LdapInsertEventMessage msg = null

@@ -64,11 +64,11 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private String[] appendOnlyAttributeNames;
 
     /**
-     * true indicates that when an insert or rename happens, the
-     * globally unique identifier is retrieved after the insert or rename and
-     * passed back in the insert or rename callback message.
+     * true indicates that when updating an object with a primary key
+     * and the DN doesn't match the requested DN, to rename the object to the
+     * requested DN.
      */
-    private boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+    private boolean renamingEnabled;
 
     public UidObjectDefinition() {
     }
@@ -78,13 +78,13 @@ public class UidObjectDefinition implements LdapObjectDefinition {
             boolean keepExistingAttributesWhenUpdating,
             boolean removeDuplicatePrimaryKeys,
             String[] appendOnlyAttributeNames,
-            boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks
+            boolean renamingEnabled
     ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-        this.passGloballyUniqueIdentifierToInsertAndRenameCallbacks = passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+        this.renamingEnabled = renamingEnabled;
     }
 
     /**
@@ -257,35 +257,22 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     }
 
     /**
-     * @return true indicates that when an insert or rename happens, the
-     * globally unique identifier is retrieved after the insert or rename and
-     * passed back in the insert or rename callback message.
+     * @return true indicates that when updating an object with a primary key
+     * and the DN doesn't match the requested DN, to rename the object to the
+     * requested DN.
      */
-    public boolean isPassGloballyUniqueIdentifierToInsertAndRenameCallbacks() {
-        return passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+    @Override
+    public boolean isRenamingEnabled() {
+        return renamingEnabled;
     }
 
     /**
-     * @param passGloballyUniqueIdentifierToInsertAndRenameCallbacks true indicates
-     *                                                               that when
-     *                                                               an insert
-     *                                                               or rename
-     *                                                               happens,
-     *                                                               the globally
-     *                                                               unique
-     *                                                               identifier
-     *                                                               is retrieved
-     *                                                               after the
-     *                                                               insert
-     *                                                               or rename
-     *                                                               and passed
-     *                                                               back in
-     *                                                               the insert
-     *                                                               or rename
-     *                                                               callback
-     *                                                               message
+     * @param renamingEnabled true indicates that when updating an object
+     *                        with a primary key and the DN doesn't match the
+     *                        requested DN, to rename the object to the
+     *                        requested DN.
      */
-    public void setPassGloballyUniqueIdentifierToInsertAndRenameCallbacks(boolean passGloballyUniqueIdentifierToInsertAndRenameCallbacks) {
-        this.passGloballyUniqueIdentifierToInsertAndRenameCallbacks = passGloballyUniqueIdentifierToInsertAndRenameCallbacks;
+    public void setRenamingEnabled(boolean renamingEnabled) {
+        this.renamingEnabled = renamingEnabled;
     }
 }

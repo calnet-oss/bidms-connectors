@@ -117,9 +117,9 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     String[] getAppendOnlyAttributeNames();
 
     /**
-     * @return true indicates that when an insert or rename happens, the
-     * globally unique identifier is retrieved after the insert or rename and
-     * passed back in the insert or rename callback message.
+     * @return true indicates that when updating an object with a primary key
+     * and the DN doesn't match the requested DN, to rename the object to the
+     * requested DN.
      */
-    boolean isPassGloballyUniqueIdentifierToInsertAndRenameCallbacks();
+    boolean isRenamingEnabled();
 }

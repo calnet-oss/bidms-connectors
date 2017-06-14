@@ -30,26 +30,24 @@ package edu.berkeley.bidms.connector.ldap.event.message
 import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
 import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
-import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
-import groovy.transform.EqualsAndHashCode
-import groovy.transform.ToString
 
 /**
- * Rename messages sent to callbacks.
+ * Unique identifier messages sent to callbacks where the unique identifier has been created or possibly changed.
+ * It's possible this message is generated on rename and update events where the directory has not actually changed the unique identifier.
  */
-@ToString(includeNames = true)
-@EqualsAndHashCode
-class LdapRenameEventMessage implements LdapEventMessage {
+class LdapUniqueIdentifierEventMessage implements LdapEventMessage {
     LdapEventType getEventType() {
-        return LdapEventType.RENAME_EVENT
+        return LdapEventType.UNIQUE_IDENTIFIER_EVENT
     }
 
     boolean success
+    LdapEventType causingEvent /* can be INSERT_EVENT, UPDATE_EVENT or RENAME_EVENT */
     String eventId
     LdapObjectDefinition objectDef
     LdapCallbackContext context
     String pkey
     String oldDn
     String newDn
+    Object globallyUniqueIdentifier
     Throwable exception
 }
