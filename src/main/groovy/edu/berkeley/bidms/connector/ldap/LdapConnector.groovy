@@ -42,6 +42,9 @@ import org.springframework.ldap.support.LdapNameBuilder
 import javax.naming.Name
 import javax.naming.directory.*
 
+/**
+ * Connector for LDAP and Active Directory.
+ */
 @Slf4j
 class LdapConnector implements Connector {
 
@@ -60,7 +63,8 @@ class LdapConnector implements Connector {
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
 
     /**
-     * If true, calls to callbacks will be done synchronously instead of asynchronously
+     * If true, calls to callbacks will be done synchronously instead of
+     * asynchronously
      */
     boolean isSynchronousCallback = false
 
@@ -70,8 +74,8 @@ class LdapConnector implements Connector {
     final LdapCallbackMonitorThread callbackMonitorThread = (!isSynchronousCallback ? new LdapCallbackMonitorThread(this) : null)
 
     /**
-     * Start the LDAP connector.
-     * Responsible for starting the callback queue monitor thread when running in asynchronous callback mode.
+     * Start the LDAP connector.  Responsible for starting the callback
+     * queue monitor thread when running in asynchronous callback mode.
      */
     void start() {
         if (!isSynchronousCallback) {
@@ -80,8 +84,8 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Stop the LDAP connector.
-     * Responsible for stopping the callback queue monitor thread when running in asynchronous callback mode.
+     * Stop the LDAP connector.  Responsible for stopping the callback queue
+     * monitor thread when running in asynchronous callback mode.
      */
     void stop() {
         if (!isSynchronousCallback) {
@@ -90,7 +94,10 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * In current thread, invoke the callback for an event message.  This invoked by the ldapConnector directly in synchronous callback mode and invoked by the callback queue monitor thread when running in asynchronous callback mode.
+     * In current thread, invoke the callback for an event message.  This
+     * invoked by the ldapConnector directly in synchronous callback mode
+     * and invoked by the callback queue monitor thread when running in
+     * asynchronous callback mode.
      *
      * @param eventMessage The event message to pass back to the callback.
      */
@@ -114,7 +121,9 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * The callback queue monitor thread calls this to see if there are messages in the callback queue.
+     * The callback queue monitor thread calls this to see if there are
+     * messages in the callback queue.
+     *
      * @return The next message in the callback queue or null if the queue is empty.
      */
     protected LdapEventMessage pollCallbackQueue() {
@@ -122,7 +131,8 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Deliver a callback message either synchronously or asynchronously depending on the isSynchronousCallback flag.
+     * Deliver a callback message either synchronously or asynchronously
+     * depending on the isSynchronousCallback flag.
      *
      * @param eventMessage The event message to deliver.
      */
@@ -140,25 +150,26 @@ class LdapConnector implements Connector {
     /**
      * Search the directory for objects for a primary key.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param pkey
-     * @return
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param pkey Primary key
+     * @return A list of objects found in the directory
      */
     List<DirContextAdapter> searchByPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
     }
 
     /**
-     * Search the directory for objects for a globally unique identifier or a primary key.
+     * Search the directory for objects for a globally unique identifier or
+     * a primary key.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param uniqueIdentifier
-     * @param pkey
-     * @return
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param uniqueIdentifier Globally unique identifier
+     * @param pkey Primary key
+     * @return A list of objects found in the directory
      */
     List<DirContextAdapter> searchByGloballyUniqueIdentifierOrPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(uniqueIdentifier, pkey), toDirContextAdapterContextMapper)
@@ -167,12 +178,15 @@ class LdapConnector implements Connector {
     /**
      * Search the directory for an object by its DN.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param dn
-     * @param attributes
-     * @return
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param dn Distinguished name
+     * @param attributes Optionally, a list of attributes to return for each
+     *        object.  If null, returns all attributes except operational
+     *        attributes.  If operational attributes are desired, they have
+     *        to be specified.
+     * @return The found directory object or null if it was not found
      */
     DirContextAdapter lookup(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String dn, String[] attributes = null) {
         if (!attributes) {
@@ -185,11 +199,11 @@ class LdapConnector implements Connector {
     /**
      * Search the directory for an object by its globally unique identifier.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param uniqueIdentifier
-     * @return
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param uniqueIdentifier Globally unique identifier
+     * @return The found directory object or null if it was not found
      */
     DirContextAdapter lookupByGloballyUniqueIdentifier(
             String eventId,
@@ -203,12 +217,12 @@ class LdapConnector implements Connector {
     /**
      * Delete all objects in the directory for a primary key.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param pkey
-     * @param dn
-     * @throws LdapConnectorException
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param pkey Primary key
+     * @param dn Distinguished name
+     * @throws LdapConnectorException If an error occurs
      */
     void delete(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn) throws LdapConnectorException {
         Throwable exception
@@ -234,15 +248,18 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Rename an object in the directory, which means changing its distinguished name.
+     * Rename an object in the directory, which means changing its
+     * distinguished name.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param pkey
-     * @param oldDn
-     * @param newDn
-     * @throws LdapConnectorException
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param pkey Primary key
+     * @param oldDn The original distinguished name of the object to be
+     *        renamed.
+     * @param newDn The new distingished name of the object after it is
+     *        renamed.
+     * @throws LdapConnectorException If an error occurs
      */
     void rename(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String oldDn, String newDn) throws LdapConnectorException {
         Throwable exception
@@ -268,14 +285,33 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Update an existing LDAP object with values in newAttributeMap.
+     * Update an existing directory object with given values.
      *
      * Attribute names in the newReplaceAttributeMap and
-     * newAppendOnlyAttributeMap are case sensitive.  Attribute strings must
-     * match the case of the attribute names of the directory schema, as
-     * retrieved from the directory via a search() or lookup().
+     * newAppendOnlyAttributeMap are case sensitive in the context of
+     * properly detecting changes of the attributes.  To detect changes
+     * properly, attribute strings must match the case of the attribute
+     * names of the directory schema, as retrieved from the directory via a
+     * search() or lookup().
      *
-     * @return true if a modification occurred
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param foundObjectMethod
+     * @param pkey Primary key
+     * @param existingEntry The existing directory entry to update
+     * @param dn Distinguished name of the object being updated
+     * @param newReplaceAttributeMap Attributes to replace where the keys in
+     *        the map are attribute names.  For changes to be detected
+     *        properly the attribute names must match the case of the
+     *        attribute in the directory.
+     * @param newAppendOnlyAttributeMap Multi-value attributes to append to
+     *        where the keys in the map are the attribute names.  For
+     *        changes to be detected properly the attribute names must match
+     *        the case of the attribute in the directory.
+     * @return true if an update actually occured in the directory.  false
+     *         may be returned if the object is unchanged.
+     * @throws LdapConnectorException If an error occurs
      */
     boolean update(
             String eventId,
@@ -388,13 +424,14 @@ class LdapConnector implements Connector {
     /**
      * Insert a new object into the directory.
      *
-     * @param eventId
-     * @param objectDef
-     * @param context
-     * @param pkey
-     * @param dn
-     * @param attributeMap
-     * @throws LdapConnectorException
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param pkey Primary key of object being created
+     * @param dn Distinguished name of object being created
+     * @param attributeMap Attributes for the object where the keys in the
+     *        map are attribute names.
+     * @throws LdapConnectorException If an error occurs
      */
     void insert(
             String eventId,
@@ -452,17 +489,82 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Persist the values in attrMap to the directory.
+     * Insert, update or delete (persist) an object in the directory.
      *
-     * Attribute names in the attrMap are case sensitive.  Attribute strings
-     * must match the case of the attribute names in the directory schema,
-     * as when retrieved from the directory via a search() or lookup().
+     * <ul>
+     * <li>The requested DN of the object is in attrMap[dn].</li>
+     * <li>The primary key of the object is in
+     *     attrMap[objectDef.getPrimaryKeyAttrName()].</li>
+     * <li>Optionally, the globally unique identifier of the object is in
+     *     attrMap[objectDef.getGloballyUniqueIdentifierAttrName()].  The
+     *     globally unique identifier is assumed to be an operational
+     *     attribute that is read-only.  That is, it is only set
+     *     automatically by the directory.</li>
+     * </ul>
      *
-     * @param objectDef Object definition of the LDAP object
-     * @param attrMap The map of the attributes for the LDAP object.  Keys
-     *        are case sensitive and must match the case of the attribute
-     *        names in the directory schema.
-     * @return true if a modification occurred
+     * Existing objects are found via
+     * searchByGloballyUniqueIdentifierOrPrimaryKey() or
+     * searchByGloballyUniqueIdentifierOrPrimaryKey() or lookup().
+     *
+     * When attempting an insert a new DN, if there is already an existing
+     * object in the directory with the globally unique identifier or
+     * primary key, the existing object will be updated instead and the DN
+     * will be renamed to your requested DN.  If there are multiple objects
+     * already in the directory with the same primary key but different DNs,
+     * the duplicates will be deleted.
+     *
+     * When attempting an update of a DN but the DN does not exist, and
+     * there is already an existing object in the directory with the
+     * globally unique identifier or primary key, the existing object will
+     * be updated and the DN will be renamed to your requested DN.  If there
+     * are multiple objects already in the directory with the same primary
+     * key but different DNs, the duplicates will be deleted.
+     *
+     * When inserting or updating and multiple objects with the same primary
+     * key are found, there is an algorithm for determining which one to
+     * keep.  The rest are deleted.  This algorithm is:
+     * <ul>
+     * <li>If the globally unique identifier is set, use
+     *     searchByGloballyUniqueIdentifierOrPrimaryKey() to find objects,
+     *     otherwise use searchByPrimaryKey.</li>
+     * <li>If any of those match the requested DN, that object will be kept
+     *     and the rest deleted.</li>
+     * <li>If there's only one result found and
+     *     objectDef.acceptAsExistingDn() returns true for it, use that
+     *     object.</li>
+     * <li>If there's an object that matches the globally unique identifier,
+     *     use that and delete the rest.</li>
+     * <li>If there's an object that matches the primary key and
+     *     objectDef.acceptAsExistingDn() returns true for it, use that
+     *     object and delete the rest.</li>
+     * <li>Search the directory for the DN using lookup().  If an object is
+     *     found, that means the DN exists but the primary key is a mismatch
+     *     and the primary key will be updated.</li>
+     * </ul>
+     *
+     * When deleting an object, any object matching the DN or the primary
+     * key will be deleted.
+     *
+     * For changes to be detected properly, attribute names in the attrMap
+     * are case sensitive.  Attribute strings must match the case of the
+     * attribute names in the directory schema, as when retrieved from the
+     * directory via a search() or lookup().
+     *
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param attrMap The map of the attributes for the directory object
+     *        where the keys in the map are attribute names.  For changes to
+     *        be detected properly, attribute names are case sensitive and
+     *        must match the case of the attribute names in the directory
+     *        schema.
+     * @param isDelete If true, the objects matching the distinguished name
+     *        and primary key will be deleted.  If there are multiple
+     *        objects in the directory for the primary key, as returned by
+     *        searchByPrimaryKey(), then they will all be deleted.
+     * @return true if an update actually occured in the directory.  false
+     *         may be returned if the object is unchanged.
+     * @throws LdapConnectorException If an error occurs
      */
     @Override
     boolean persist(
@@ -678,7 +780,8 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Convert a map to an Attributes object that contains all the keys and values from the map.
+     * Convert a map to an Attributes object that contains all the keys and
+     * values from the map.
      *
      * @param attrMap
      * @return
