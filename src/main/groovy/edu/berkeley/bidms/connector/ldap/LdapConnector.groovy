@@ -252,7 +252,7 @@ class LdapConnector implements Connector {
     void delete(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn) throws LdapConnectorException {
         Throwable exception
         try {
-            // FIXME: This isn't deleting all objects by the primary key.
+            // FIXME: This isn't deleting all objects by the primary key when isRemoveDuplicatePrimaryKeys() is true.
             ldapTemplate.unbind(buildDnName(dn))
         }
         catch (Throwable t) {
@@ -470,6 +470,10 @@ class LdapConnector implements Connector {
         Map<String, Object> convertedNewAttributeMap = null
         Object directoryUniqueIdentifier = null
         try {
+            // Spring method naming is a little confusing.  Spring uses the word
+            // "bind" and "rebind" to mean "create" and "update." In this
+            // context, it does not mean "authenticate (bind) to the LDAP
+            // server.
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
 
@@ -535,19 +539,23 @@ class LdapConnector implements Connector {
      * object in the directory with the globally unique identifier or
      * primary key, the existing object will be updated instead and the DN
      * will be renamed to your requested DN.  If there are multiple objects
-     * already in the directory with the same primary key but different DNs,
-     * the duplicates will be deleted.
+     * already in the directory with the same primary key but different DNs
+     * and objectDef.isRemoveDuplicatePrimaryKeys() returns true, the
+     * duplicates will be deleted.
      *
      * When attempting an update of a DN but the DN does not exist, and
      * there is already an existing object in the directory with the
      * globally unique identifier or primary key, the existing object will
      * be updated and the DN will be renamed to your requested DN.  If there
      * are multiple objects already in the directory with the same primary
-     * key but different DNs, the duplicates will be deleted.
+     * key but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
+     * returns true, the duplicates will be deleted.
      *
      * When inserting or updating and multiple objects with the same primary
      * key are found, there is an algorithm for determining which one to
-     * keep.  The rest are deleted.  This algorithm is:
+     * update.  The rest are deleted if
+     * objectDef.isRemoveDuplicatePrimaryKeys()() returns true.  This
+     * algorithm is:
      * <ul>
      * <li>If the globally unique identifier is set, use
      *     searchByGloballyUniqueIdentifierOrPrimaryKey() to find objects,
@@ -568,7 +576,8 @@ class LdapConnector implements Connector {
      * </ul>
      *
      * When deleting an object, any object matching the DN or the primary
-     * key will be deleted.
+     * key (if objectDef.isRemoveDuplicatePrimaryKeys() returns true) will
+     * be deleted.
      *
      * For changes to be detected properly, attribute names in the attrMap
      * are case sensitive.  Attribute strings must match the case of the
@@ -629,11 +638,6 @@ class LdapConnector implements Connector {
         // Remove the dn from the object -- not an actual attribute
         attrMapCopy.remove("dn")
 
-        // Spring method naming is a little confusing.  Spring uses the word
-        // "bind" and "rebind" to mean "create" and "update." In this
-        // context, it does not mean "authenticate (bind) to the LDAP
-        // server."
-
         // See if records belonging to the globally unique identifier or
         // pkey exist
         List<DirContextAdapter> searchResults = (uniqueIdentifier
@@ -646,11 +650,11 @@ class LdapConnector implements Connector {
             //
             // There's only supposed to be one entry-per-pkey in the
             // directory, but this is not guaranteed to always be the case. 
-            // When the search returns more than one entry, first see if
-            // there's any one that already matches the primary key of our
-            // downstream object and if that yields nothing, do the same for
-            // the DN.  If none match and isRemoveDuplicatePrimaryKeys()
-            // returns true, pick one to rename and delete the rest.
+            // If isRemoveDuplicatePrimaryKeys() returns true, pick one to
+            // use according to our resolution algorithm and delete the
+            // rest.  It's also possible the DN exists with a different
+            // primary key.  In that case, use that object, but the primary
+            // key will be updated.
             //
 
             DirContextAdapter existingEntry = null
@@ -783,7 +787,7 @@ class LdapConnector implements Connector {
                 isModified = true
             }
         } else {
-            // is a deletion for the pkey
+            // is a deletion for the DN and/or pkey
             searchResults.each { DirContextAdapter entry ->
                 delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn.toString())
                 isModified = true
