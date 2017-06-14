@@ -31,11 +31,7 @@ import edu.berkeley.bidms.connector.CallbackContext
 import edu.berkeley.bidms.connector.Connector
 import edu.berkeley.bidms.connector.ObjectDefinition
 import edu.berkeley.bidms.connector.ldap.event.*
-import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.*
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
@@ -237,7 +233,7 @@ class LdapConnector implements Connector {
 
             convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
             Map<String, Object> attributesToKeepOrUpdate
-            if (objectDef.keepExistingAttributesWhenUpdating()) {
+            if (objectDef.isKeepExistingAttributesWhenUpdating()) {
                 attributesToKeepOrUpdate = new LinkedHashMap<String, Object>(oldAttributeMap)
                 attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
             } else {
@@ -274,7 +270,7 @@ class LdapConnector implements Connector {
             // the attribute is not in the newAttributeMap or if the
             // attribute is explicitly set to null in the newAttributeMap.
             HashSet<String> attributeNamesToRemove = (
-                    (!objectDef.keepExistingAttributesWhenUpdating() ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
+                    (!objectDef.isKeepExistingAttributesWhenUpdating() ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
             ) + (
                     (newReplaceAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
             )
@@ -450,7 +446,7 @@ class LdapConnector implements Connector {
             // When the search returns more than one entry, first see if
             // there's any one that already matches the primary key of our
             // downstream object and if that yields nothing, do the same for
-            // the DN.  If none match and removeDuplicatePrimaryKeys()
+            // the DN.  If none match and isRemoveDuplicatePrimaryKeys()
             // returns true, pick one to rename and delete the rest.
             //
 
@@ -471,13 +467,13 @@ class LdapConnector implements Connector {
             // If none of the entries match DN but there's one value in
             // searchResults, that means the DN has changed, but the object
             // was found by unique identifier or pkey
-            if (!existingEntry && searchResults?.size() == 1) {
+            if (!existingEntry && searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(searchResults.first().dn.toString())) {
                 existingEntry = searchResults.first()
                 // key is unique identifier or pkey
                 foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
             }
             // If none of the entries match DN but there's more than one
-            // value in searchResults, that means DN has changed, and one of
+            // value in searchResults, that means DN has changed and one of
             // the objects in the searchResults could be a match against the
             // globally unique identifier, which we want to prioritize over
             // the others
@@ -492,7 +488,7 @@ class LdapConnector implements Connector {
                     // but there are more than one value in searchResults,
                     // that means there are multiple entries in the
                     // directory with the same pkey, none of them matching
-                    // our DN.  Just pick the first one found that matches
+                    // our DN or unique identifier.  Just pick the first one found that matches
                     // our DN acceptance criteria.
                     existingEntry = searchResults.find { DirContextAdapter entry ->
                         ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
@@ -517,7 +513,7 @@ class LdapConnector implements Connector {
                 }
             }
 
-            if (((LdapObjectDefinition) objectDef).removeDuplicatePrimaryKeys()) {
+            if (((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
                 // Delete all the entriepersistences that we're not keeping
                 // as the existingEntry
                 searchResults.each { DirContextAdapter entry ->

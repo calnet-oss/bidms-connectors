@@ -35,6 +35,9 @@ import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
 
 
+/**
+ * Insert messages sent to callbacks.
+ */
 @ToString(includeNames = true)
 @EqualsAndHashCode
 class LdapInsertEventMessage implements LdapEventMessage {

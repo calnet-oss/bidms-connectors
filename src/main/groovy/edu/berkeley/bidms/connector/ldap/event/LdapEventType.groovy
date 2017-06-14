@@ -27,6 +27,9 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
+/**
+ * Event type enum.
+ */
 enum LdapEventType {
     DELETE_EVENT,
     INSERT_EVENT,

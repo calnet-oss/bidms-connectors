@@ -27,5 +27,8 @@
 
 package edu.berkeley.bidms.connector
 
+/**
+ * Caller-provided context that is sent back to callbacks.
+ */
 interface CallbackContext {
 }

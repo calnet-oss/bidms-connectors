@@ -33,6 +33,9 @@ import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
 
+/**
+ * Delete messages sent to callbacks.
+ */
 @ToString(includeNames = true)
 @EqualsAndHashCode
 class LdapDeleteEventMessage implements LdapEventMessage {

@@ -29,6 +29,9 @@ package edu.berkeley.bidms.connector.ldap.event.message
 
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 
+/**
+ * Interface for messages sent to callbacks.
+ */
 interface LdapEventMessage {
     LdapEventType getEventType()
 }

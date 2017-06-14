@@ -27,6 +27,9 @@
 
 package edu.berkeley.bidms.connector
 
+/**
+ * Interface for a connector.
+ */
 interface Connector {
     boolean persist(String eventId, ObjectDefinition objectDef, CallbackContext context, Map<String, Object> jsonObject, boolean isDelete) throws ConnectorException
 }

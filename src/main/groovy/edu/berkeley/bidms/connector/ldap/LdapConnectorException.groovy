@@ -30,6 +30,9 @@ package edu.berkeley.bidms.connector.ldap
 import edu.berkeley.bidms.connector.ConnectorException
 import groovy.transform.InheritConstructors
 
+/**
+ * Exception thrown within LdapConnector functionality.
+ */
 @InheritConstructors
 class LdapConnectorException extends ConnectorException{
 }

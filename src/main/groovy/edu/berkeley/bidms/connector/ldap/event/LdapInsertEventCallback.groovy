@@ -29,5 +29,8 @@ package edu.berkeley.bidms.connector.ldap.event
 
 import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
 
+/**
+ * Callback for insert events.
+ */
 interface LdapInsertEventCallback extends LdapEventCallback<LdapInsertEventMessage> {
 }

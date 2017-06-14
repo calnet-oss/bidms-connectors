@@ -33,11 +33,11 @@ import static org.springframework.ldap.query.LdapQueryBuilder.query;
 
 /**
  * An object definition for LDAP objects where the primary key is the uid
- * attribute.
+ * attribute and the globally unique identifier is the entryUUID attribute.
  */
 public class UidObjectDefinition implements LdapObjectDefinition {
     /**
-     * The objectClass to filter by when searching for uids.
+     * The objectClass to filter by when searching for primary keys.
      * The "person" objectClass would be a typical example.
      */
     private String objectClass;
@@ -78,16 +78,40 @@ public class UidObjectDefinition implements LdapObjectDefinition {
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
     }
 
+    /**
+     * The globally unique identifier attribute in the directory, which is
+     * typically an operational attribute.
+     * <p>
+     * This is often entryUUID in LDAP directories and objectGUID in Active
+     * Directory directories.
+     *
+     * @return The globally unique identifier attribute name.
+     */
     @Override
     public String getGloballyUniqueIdentifierAttributeName() {
         return "entryUUID";
     }
 
+    /**
+     * The primary key attribute in the directory.  For a person, this is
+     * often uid.
+     *
+     * @return The primary key attribute name.
+     */
     @Override
     public String getPrimaryKeyAttributeName() {
         return "uid";
     }
 
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * globally unique identifier or a primary key value.
+     *
+     * @param uniqueIdentifier The globally unique identifier value.
+     * @param pkey             The primary key value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their keys.
+     */
     @Override
     public LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey) {
         return query()
@@ -100,6 +124,14 @@ public class UidObjectDefinition implements LdapObjectDefinition {
                 );
     }
 
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * globally unique identifier.
+     *
+     * @param uniqueIdentifier The globally unique identifier value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their globally unique identifier.
+     */
     @Override
     public LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier) {
         return query()
@@ -109,6 +141,14 @@ public class UidObjectDefinition implements LdapObjectDefinition {
                 .is(uniqueIdentifier.toString());
     }
 
+    /**
+     * Get a Spring LdapQuery object to query the directory for objects by a
+     * primary key value.
+     *
+     * @param pkey The primary key value.
+     * @return The Spring LdapQuery object to query the directory for objects
+     * by their primary key.
+     */
     @Override
     public LdapQuery getLdapQueryForPrimaryKey(String pkey) {
         return query()
@@ -118,6 +158,22 @@ public class UidObjectDefinition implements LdapObjectDefinition {
                 .is(pkey);
     }
 
+    /**
+     * Implements criteria for successfully accepting a DN as a good entry
+     * when resolving multiple entries when searching by primary key.  In
+     * some (probably rare) cases, the directory may contain entries with the
+     * same primary key but are known not ever to be a "primary" entry.  For
+     * example, it's been observed that a vendor LDAP directory will leave
+     * undesired replication artifacts in the directory when replicating
+     * within a cluster.  These replication artifacts are to be disregarded
+     * and deleted as undesired duplicates.
+     * <p>
+     * Note this is *only* used when resolving results when searching by
+     * primary key.
+     *
+     * @param dn The dn to evaluate for acceptance.
+     * @return true if the dn is accepted or false if the dn is rejected.
+     */
     @Override
     public boolean acceptAsExistingDn(String dn) {
         // We disregard "entryuuid" entries because of a bug in OpenDJ that
@@ -128,45 +184,81 @@ public class UidObjectDefinition implements LdapObjectDefinition {
         return !dn.startsWith("entryuuid=");
     }
 
+    /**
+     * @return true indicates that when updating, the existing attributes
+     * that aren't in the update map will be kept instead of removed.
+     */
     @Override
-    public boolean keepExistingAttributesWhenUpdating() {
-        return keepExistingAttributesWhenUpdating;
-    }
-
-    @Override
-    public boolean removeDuplicatePrimaryKeys() {
-        return removeDuplicatePrimaryKeys;
-    }
-
-    public String getObjectClass() {
-        return objectClass;
-    }
-
-    public void setObjectClass(String objectClass) {
-        this.objectClass = objectClass;
-    }
-
     public boolean isKeepExistingAttributesWhenUpdating() {
         return keepExistingAttributesWhenUpdating;
     }
 
+    /**
+     * @param keepExistingAttributesWhenUpdating true indicates that when
+     *                                           updating, the existing
+     *                                           attributes that aren't in
+     *                                           the update map will be kept
+     *                                           instead of removed.
+     */
     public void setKeepExistingAttributesWhenUpdating(boolean keepExistingAttributesWhenUpdating) {
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
     }
 
+    /**
+     * @return true indicates that entires in the directory with the same
+     * primary key that aren't considered the primary entry will be removed.
+     * The primary entry is decided by the first entry encountered where
+     * acceptAsExistingDn(dn) returns true.
+     */
+    @Override
     public boolean isRemoveDuplicatePrimaryKeys() {
         return removeDuplicatePrimaryKeys;
     }
 
+    /**
+     * @param removeDuplicatePrimaryKeys true indicates that entires in the
+     *                                   directory with the same primary key
+     *                                   that aren't considered the primary
+     *                                   entry will be removed. The primary
+     *                                   entry is decided by the first entry
+     *                                   encountered where acceptAsExistingDn(dn)
+     *                                   returns true.
+     */
     public void setRemoveDuplicatePrimaryKeys(boolean removeDuplicatePrimaryKeys) {
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
     }
 
+    /**
+     * @return The objectClass to filter by when searching for primary keys.
+     */
+    @Override
+    public String getObjectClass() {
+        return objectClass;
+    }
+
+    /**
+     * @param objectClass The objectClass to filter by when searching for
+     *                    primary keys.
+     */
+    public void setObjectClass(String objectClass) {
+        this.objectClass = objectClass;
+    }
+
+    /**
+     * @return A list of attribute names, which must be multi-value
+     * attributes, to append to rather than overwrite when updating.
+     */
     @Override
     public String[] getAppendOnlyAttributeNames() {
         return appendOnlyAttributeNames;
     }
 
+    /**
+     * @param appendOnlyAttributeNames A list of attribute names, which must
+     *                                 be multi-value attributes, to append
+     *                                 to rather than overwrite when
+     *                                 updating.
+     */
     public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
     }

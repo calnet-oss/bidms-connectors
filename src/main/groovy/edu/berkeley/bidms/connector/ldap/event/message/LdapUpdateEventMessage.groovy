@@ -37,6 +37,9 @@ import groovy.transform.ToString
 
 import javax.naming.directory.ModificationItem
 
+/**
+ * Update messages sent to callbacks.
+ */
 @ToString(includeNames = true, excludes = "modificationItems")
 @EqualsAndHashCode(excludes = "modificationItems")
 class LdapUpdateEventMessage implements LdapEventMessage {

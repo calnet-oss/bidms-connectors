@@ -29,5 +29,8 @@ package edu.berkeley.bidms.connector.ldap.event
 
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 
+/**
+ * Callback for rename events.
+ */
 interface LdapRenameEventCallback extends LdapEventCallback<LdapRenameEventMessage> {
 }
