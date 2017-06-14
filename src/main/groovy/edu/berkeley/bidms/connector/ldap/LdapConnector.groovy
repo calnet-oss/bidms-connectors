@@ -54,55 +54,47 @@ class LdapConnector implements Connector {
     List<LdapUpdateEventCallback> updateEventCallbacks = []
     List<LdapInsertEventCallback> insertEventCallbacks = []
 
-    // For queuing up asynchronous callback messages
+    /**
+     * For queuing up asynchronous callback messages
+     */
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
-    // If true, calls to callbacks will be done synchronously instead of
-    // asynchronously
+
+    /**
+     * If true, calls to callbacks will be done synchronously instead of asynchronously
+     */
     boolean isSynchronousCallback = false
-    // Thread for monitoring the callback queue
-    final Thread callbackMonitorThread = (!isSynchronousCallback ? new Thread() {
-        volatile boolean requestStop = false
 
-        @Override
-        void run() {
-            while (!requestStop) {
-                try {
-                    synchronized (this) {
-                        wait(1000)
-                        LdapEventMessage eventMessage = null
-                        int dequeueCount = 0
-                        while (!requestStop && (eventMessage = callbackMessageQueue.poll())) {
-                            if (eventMessage != null) {
-                                invokeCallback(eventMessage)
-                                dequeueCount++
-                            }
-                        }
-                        if (dequeueCount) {
-                            notify()
-                        }
-                    }
-                }
-                catch (InterruptedException ignored) {
-                    // no-op
-                }
-            }
-        }
-    } : null)
+    /**
+     * Thread for monitoring the callback queue
+     */
+    final LdapCallbackMonitorThread callbackMonitorThread = (!isSynchronousCallback ? new LdapCallbackMonitorThread(this) : null)
 
+    /**
+     * Start the LDAP connector.
+     * Responsible for starting the callback queue monitor thread when running in asynchronous callback mode.
+     */
     void start() {
         if (!isSynchronousCallback) {
             callbackMonitorThread.start()
         }
     }
 
+    /**
+     * Stop the LDAP connector.
+     * Responsible for stopping the callback queue monitor thread when running in asynchronous callback mode.
+     */
     void stop() {
         if (!isSynchronousCallback) {
-            callbackMonitorThread.requestStop = true
-            callbackMonitorThread.interrupt()
+            callbackMonitorThread.requestStop()
         }
     }
 
-    private void invokeCallback(LdapEventMessage eventMessage) {
+    /**
+     * In current thread, invoke the callback for an event message.  This invoked by the ldapConnector directly in synchronous callback mode and invoked by the callback queue monitor thread when running in asynchronous callback mode.
+     *
+     * @param eventMessage The event message to pass back to the callback.
+     */
+    protected void invokeCallback(LdapEventMessage eventMessage) {
         switch (eventMessage.eventType) {
             case LdapEventType.UPDATE_EVENT:
                 updateEventCallbacks?.each { it.receive((LdapUpdateEventMessage) eventMessage) }
@@ -121,6 +113,19 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * The callback queue monitor thread calls this to see if there are messages in the callback queue.
+     * @return The next message in the callback queue or null if the queue is empty.
+     */
+    protected LdapEventMessage pollCallbackQueue() {
+        return callbackMessageQueue.poll()
+    }
+
+    /**
+     * Deliver a callback message either synchronously or asynchronously depending on the isSynchronousCallback flag.
+     *
+     * @param eventMessage The event message to deliver.
+     */
     void deliverCallbackMessage(LdapEventMessage eventMessage) {
         if (isSynchronousCallback) {
             invokeCallback(eventMessage)
@@ -132,14 +137,43 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * Search the directory for objects for a primary key.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param pkey
+     * @return
+     */
     List<DirContextAdapter> searchByPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
     }
 
+    /**
+     * Search the directory for objects for a globally unique identifier or a primary key.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param uniqueIdentifier
+     * @param pkey
+     * @return
+     */
     List<DirContextAdapter> searchByGloballyUniqueIdentifierOrPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(uniqueIdentifier, pkey), toDirContextAdapterContextMapper)
     }
 
+    /**
+     * Search the directory for an object by its DN.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param dn
+     * @param attributes
+     * @return
+     */
     DirContextAdapter lookup(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String dn, String[] attributes = null) {
         if (!attributes) {
             return (DirContextAdapter) ldapTemplate.lookup(buildDnName(dn))
@@ -148,6 +182,15 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * Search the directory for an object by its globally unique identifier.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param uniqueIdentifier
+     * @return
+     */
     DirContextAdapter lookupByGloballyUniqueIdentifier(
             String eventId,
             LdapObjectDefinition objectDef,
@@ -157,9 +200,20 @@ class LdapConnector implements Connector {
         return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(uniqueIdentifier), toDirContextAdapterContextMapper)
     }
 
+    /**
+     * Delete all objects in the directory for a primary key.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param pkey
+     * @param dn
+     * @throws LdapConnectorException
+     */
     void delete(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn) throws LdapConnectorException {
         Throwable exception
         try {
+            // FIXME: This isn't deleting all objects by the primary key.
             ldapTemplate.unbind(buildDnName(dn))
         }
         catch (Throwable t) {
@@ -179,6 +233,17 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * Rename an object in the directory, which means changing its distinguished name.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param pkey
+     * @param oldDn
+     * @param newDn
+     * @throws LdapConnectorException
+     */
     void rename(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String oldDn, String newDn) throws LdapConnectorException {
         Throwable exception
         try {
@@ -320,6 +385,17 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * Insert a new object into the directory.
+     *
+     * @param eventId
+     * @param objectDef
+     * @param context
+     * @param pkey
+     * @param dn
+     * @param attributeMap
+     * @throws LdapConnectorException
+     */
     void insert(
             String eventId,
             LdapObjectDefinition objectDef,
@@ -376,7 +452,7 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Persist the values in attrMap to LDAP.
+     * Persist the values in attrMap to the directory.
      *
      * Attribute names in the attrMap are case sensitive.  Attribute strings
      * must match the case of the attribute names in the directory schema,
@@ -590,11 +666,23 @@ class LdapConnector implements Connector {
         return isModified
     }
 
+    /**
+     * Create a Name object that represents a distinguished name string.
+     *
+     * @param dn
+     * @return
+     */
     @SuppressWarnings("GrMethodMayBeStatic")
     Name buildDnName(String dn) {
         return LdapNameBuilder.newInstance(dn).build()
     }
 
+    /**
+     * Convert a map to an Attributes object that contains all the keys and values from the map.
+     *
+     * @param attrMap
+     * @return
+     */
     @SuppressWarnings("GrMethodMayBeStatic")
     Attributes buildAttributes(Map<String, Object> attrMap) {
         Attributes attrs = new BasicAttributes()
@@ -618,12 +706,24 @@ class LdapConnector implements Connector {
         return attrs
     }
 
+    /**
+     * Normalize a caller-provided map of attribute values.
+     *
+     * @param map
+     * @return
+     */
     private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
         return map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
             [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : convertCallerProvidedValue(it.value))]
         }
     }
 
+    /**
+     * Normalize a caller-provided list of attribute values.
+     *
+     * @param list
+     * @return
+     */
     @SuppressWarnings("GrMethodMayBeStatic")
     private Object convertCallerProvidedList(List list) {
         if (list.size() == 1) {
@@ -633,6 +733,12 @@ class LdapConnector implements Connector {
         }
     }
 
+    /**
+     * Normalize a caller-provided value.
+     *
+     * @param value
+     * @return
+     */
     @SuppressWarnings("GrMethodMayBeStatic")
     private Object convertCallerProvidedValue(Object value) {
         if (value instanceof String || value instanceof Number || value instanceof Boolean) {
