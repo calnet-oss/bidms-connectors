@@ -49,12 +49,37 @@ import javax.naming.directory.*
 class LdapConnector implements Connector {
 
     LdapTemplate ldapTemplate
+
+    /**
+     * Converts a search result to a DirContextAdatper.
+     */
     ContextMapper<DirContextAdapter> toDirContextAdapterContextMapper = new ToDirContextAdapterContextMapper()
+
+    /**
+     * Converts a search result to a Map<String,Object>.
+     */
     ContextMapper<Map<String, Object>> toMapContextMapper = new ToMapContextMapper()
 
+    /**
+     * Callbacks to be called when a delete happens.
+     */
     List<LdapDeleteEventCallback> deleteEventCallbacks = []
+
+    /**
+     * Callbacks to be called when a rename happens.
+     */
     List<LdapRenameEventCallback> renameEventCallbacks = []
+
+    /**
+     * Callbacks to be called when an update happens.  It's possible this
+     * callback is still called when an update is requested but the
+     * requested update results in no actual change to the directory object.
+     */
     List<LdapUpdateEventCallback> updateEventCallbacks = []
+
+    /**
+     * Callbacks to be called when an insert happens.
+     */
     List<LdapInsertEventCallback> insertEventCallbacks = []
 
     /**
