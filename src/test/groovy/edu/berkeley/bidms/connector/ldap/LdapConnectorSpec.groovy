@@ -297,20 +297,20 @@ class LdapConnectorSpec extends Specification {
         )) >> { LdapUpdateEventMessage msg ->
             assert msg.modificationItems?.size()
         }
-        inserts * insertEventCallback.receive(_) >> { LdapInsertEventMessage msg ->
-            assert msg.success
-            assert msg.eventId == eventId
-            assert msg.objectDef == uidObjectDef
-            assert msg.pkey == uid
-            assert msg.dn == dn
-            assert msg.newAttributes == [
-                    uid        : uid,
-                    objectClass: objectClasses,
-                    sn         : "User",
-                    cn         : "Test User",
-                    description: "updated"
-            ]
-        }
+        inserts * insertEventCallback.receive(new LdapInsertEventMessage(
+                success: true,
+                eventId: eventId,
+                objectDef: uidObjectDef,
+                pkey: uid,
+                dn: dn,
+                newAttributes:  [
+                        uid        : uid,
+                        objectClass: objectClasses,
+                        sn         : "User",
+                        cn         : "Test User",
+                        description: "updated"
+                ]
+        ))
         uniqIdCBs * uniqueIdentifierEventCallback.receive(_) >> { LdapUniqueIdentifierEventMessage msg ->
             assert msg.success
             assert msg.causingEvent
