@@ -105,38 +105,22 @@ public class UidObjectDefinition implements LdapObjectDefinition {
 
     /**
      * Get a Spring LdapQuery object to query the directory for objects by a
-     * globally unique identifier or a primary key value.
-     *
-     * @param uniqueIdentifier The globally unique identifier value.
-     * @param pkey             The primary key value.
-     * @return The Spring LdapQuery object to query the directory for objects
-     * by their keys.
-     */
-    @Override
-    public LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey) {
-        return query()
-                .where("objectClass")
-                .is(objectClass)
-                .and(query()
-                        .where(getGloballyUniqueIdentifierAttributeName())
-                        .is(uniqueIdentifier.toString())
-                        .or(getPrimaryKeyAttributeName()).is(pkey)
-                );
-    }
-
-    /**
-     * Get a Spring LdapQuery object to query the directory for objects by a
      * globally unique identifier.
      *
+     * @param pkey             When searching by globally unique identifier,
+     *                         the object must also match this expected
+     *                         primary key.
      * @param uniqueIdentifier The globally unique identifier value.
      * @return The Spring LdapQuery object to query the directory for objects
      * by their globally unique identifier.
      */
     @Override
-    public LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier) {
+    public LdapQuery getLdapQueryForGloballyUniqueIdentifier(String pkey, Object uniqueIdentifier) {
         return query()
                 .where("objectClass")
                 .is(objectClass)
+                .and(getPrimaryKeyAttributeName())
+                .is(pkey)
                 .and(getGloballyUniqueIdentifierAttributeName())
                 .is(uniqueIdentifier.toString());
     }

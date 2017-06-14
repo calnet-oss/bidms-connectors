@@ -149,7 +149,8 @@ class LdapConnector implements Connector {
      * The callback queue monitor thread calls this to see if there are
      * messages in the callback queue.
      *
-     * @return The next message in the callback queue or null if the queue is empty.
+     * @return The next message in the callback queue or null if the queue
+     *         is empty.
      */
     protected LdapEventMessage pollCallbackQueue() {
         return callbackMessageQueue.poll()
@@ -186,21 +187,6 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Search the directory for objects for a globally unique identifier or
-     * a primary key.
-     *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
-     * @param uniqueIdentifier Globally unique identifier
-     * @param pkey Primary key
-     * @return A list of objects found in the directory
-     */
-    List<DirContextAdapter> searchByGloballyUniqueIdentifierOrPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Object uniqueIdentifier, String pkey) {
-        return ldapTemplate.search(objectDef.getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(uniqueIdentifier, pkey), toDirContextAdapterContextMapper)
-    }
-
-    /**
      * Search the directory for an object by its DN.
      *
      * @param eventId Event id
@@ -227,6 +213,8 @@ class LdapConnector implements Connector {
      * @param eventId Event id
      * @param objectDef Object definition
      * @param context Callback context
+     * @param pkey When searching by globally unique identifier, the object
+     *        must also match this expected primary key.
      * @param uniqueIdentifier Globally unique identifier
      * @return The found directory object or null if it was not found
      */
@@ -234,9 +222,10 @@ class LdapConnector implements Connector {
             String eventId,
             LdapObjectDefinition objectDef,
             LdapCallbackContext context,
+            String pkey,
             Object uniqueIdentifier
     ) {
-        return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(uniqueIdentifier), toDirContextAdapterContextMapper)
+        return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(pkey, uniqueIdentifier), toDirContextAdapterContextMapper)
     }
 
     /**
@@ -487,10 +476,10 @@ class LdapConnector implements Connector {
         Map<String, Object> convertedNewAttributeMap = null
         Object directoryUniqueIdentifier = null
         try {
-            // Spring method naming is a little confusing.  Spring uses the word
-            // "bind" and "rebind" to mean "create" and "update." In this
-            // context, it does not mean "authenticate (bind) to the directory
-            // server.
+            // Spring method naming is a little confusing.  Spring uses the
+            // word "bind" and "rebind" to mean "create" and "update." In
+            // this context, it does not mean "authenticate (bind) to the
+            // directory server.
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
 
@@ -548,25 +537,23 @@ class LdapConnector implements Connector {
      *     automatically by the directory.</li>
      * </ul>
      *
-     * Existing objects are found via
-     * searchByGloballyUniqueIdentifierOrPrimaryKey() or
-     * searchByGloballyUniqueIdentifierOrPrimaryKey() or lookup().
+     * Existing objects are found via searchByPrimaryKey() or lookup().
      *
-     * When attempting an insert a new DN, if there is already an existing
-     * object in the directory with the globally unique identifier or
-     * primary key, the existing object will be updated instead and the DN
-     * will be renamed to your requested DN.  If there are multiple objects
-     * already in the directory with the same primary key but different DNs
-     * and objectDef.isRemoveDuplicatePrimaryKeys() returns true, the
-     * duplicates will be deleted.
+     * When attempting an insert of a new DN, if there is already an
+     * existing object in the directory with the primary key, the existing
+     * object will be updated instead and the DN will be renamed to your
+     * requested DN.  If there are multiple objects already in the directory
+     * with the same primary key but different DNs and
+     * objectDef.isRemoveDuplicatePrimaryKeys() returns true, the duplicates
+     * will be deleted.
      *
      * When attempting an update of a DN but the DN does not exist, and
-     * there is already an existing object in the directory with the
-     * globally unique identifier or primary key, the existing object will
-     * be updated and the DN will be renamed to your requested DN.  If there
-     * are multiple objects already in the directory with the same primary
-     * key but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
-     * returns true, the duplicates will be deleted.
+     * there is already an existing object in the directory with the primary
+     * key, the existing object will be updated and the DN will be renamed
+     * to your requested DN.  If there are multiple objects already in the
+     * directory with the same primary key but different DNs and
+     * objectDef.isRemoveDuplicatePrimaryKeys() returns true, the duplicates
+     * will be deleted.
      *
      * When inserting or updating and multiple objects with the same primary
      * key are found, there is an algorithm for determining which one to
@@ -574,16 +561,14 @@ class LdapConnector implements Connector {
      * objectDef.isRemoveDuplicatePrimaryKeys()() returns true.  This
      * algorithm is:
      * <ul>
-     * <li>If the globally unique identifier is set, use
-     *     searchByGloballyUniqueIdentifierOrPrimaryKey() to find objects,
-     *     otherwise use searchByPrimaryKey.</li>
+     * <li>Use searchByPrimaryKey to find objects.</li>
      * <li>If any of those match the requested DN, that object will be kept
      *     and the rest deleted.</li>
      * <li>If there's only one result found and
      *     objectDef.acceptAsExistingDn() returns true for it, use that
      *     object.</li>
-     * <li>If there's an object that matches the globally unique identifier,
-     *     use that and delete the rest.</li>
+     * <li>If there's an object that matches the pkey and the globally
+     *     unique identifier, use that and delete the rest.</li>
      * <li>If there's an object that matches the primary key and
      *     objectDef.acceptAsExistingDn() returns true for it, use that
      *     object and delete the rest.</li>
@@ -665,43 +650,37 @@ class LdapConnector implements Connector {
             // key will be updated.
             //
 
-            // See if records belonging to the globally unique identifier or
-            // pkey exist
-            List<DirContextAdapter> searchResults = (uniqueIdentifier
-                    ? searchByGloballyUniqueIdentifierOrPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier, pkey)
-                    : searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey))
-
+            // See if records belonging to the pkey exist
+            List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
 
             DirContextAdapter existingEntry = null
             FoundObjectMethod foundObjectMethod = null
 
             if (!existingEntry) {
                 // Find entries with matching dn.  searchResults only
-                // contains entries with matching unique identifier or pkey.
+                // contains entries with matching pkey.
                 existingEntry = searchResults?.find { DirContextAdapter entry ->
                     entry.dn.toString() == dn
                 }
                 if (existingEntry) {
-                    // key is unique identifier or pkey
                     foundObjectMethod = FoundObjectMethod.BY_DN_MATCHED_KEY
                 }
             }
             // If none of the entries match DN but there's one value in
             // searchResults, that means the DN has changed, but the object
-            // was found by unique identifier or pkey
+            // was found by pkey
             if (!existingEntry && searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(searchResults.first().dn.toString())) {
                 existingEntry = searchResults.first()
-                // key is unique identifier or pkey
                 foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
             }
             // If none of the entries match DN but there's more than one
             // value in searchResults, that means DN has changed and one of
             // the objects in the searchResults could be a match against the
             // globally unique identifier, which we want to prioritize over
-            // the others
+            // the others.
             if (!existingEntry && searchResults?.size()) {
                 if (uniqueIdentifier) {
-                    existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier)
+                    existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, uniqueIdentifier)
                 }
                 if (existingEntry) {
                     foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
@@ -710,8 +689,8 @@ class LdapConnector implements Connector {
                     // but there are more than one value in searchResults,
                     // that means there are multiple entries in the
                     // directory with the same pkey, none of them matching
-                    // our DN or unique identifier.  Just pick the first one found that matches
-                    // our DN acceptance criteria.
+                    // our DN or unique identifier.  Just pick the first one
+                    // found that matches our DN acceptance criteria.
                     existingEntry = searchResults.find { DirContextAdapter entry ->
                         ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
                     }
@@ -721,8 +700,7 @@ class LdapConnector implements Connector {
                 }
             }
 
-            // DN may still exist but with a different unique identifier and
-            // primary key
+            // DN may still exist but with a different primary key
             if (!existingEntry) {
                 try {
                     existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
