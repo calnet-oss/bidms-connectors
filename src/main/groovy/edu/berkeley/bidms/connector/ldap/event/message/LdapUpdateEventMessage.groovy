@@ -47,7 +47,7 @@ class LdapUpdateEventMessage implements LdapEventMessage {
         return LdapEventType.UPDATE_EVENT
     }
 
-    boolean isSuccess
+    boolean success
     String eventId
     LdapObjectDefinition objectDef
     LdapCallbackContext context

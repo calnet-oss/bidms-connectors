@@ -43,7 +43,7 @@ class LdapDeleteEventMessage implements LdapEventMessage {
         return LdapEventType.DELETE_EVENT
     }
 
-    boolean isSuccess
+    boolean success
     String eventId
     LdapObjectDefinition objectDef
     LdapCallbackContext context

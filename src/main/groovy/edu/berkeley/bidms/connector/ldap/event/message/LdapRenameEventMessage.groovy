@@ -44,7 +44,7 @@ class LdapRenameEventMessage implements LdapEventMessage {
         return LdapEventType.RENAME_EVENT
     }
 
-    boolean isSuccess
+    boolean success
     String eventId
     LdapObjectDefinition objectDef
     LdapCallbackContext context
