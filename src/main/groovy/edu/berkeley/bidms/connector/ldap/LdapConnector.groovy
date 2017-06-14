@@ -31,6 +31,11 @@ import edu.berkeley.bidms.connector.CallbackContext
 import edu.berkeley.bidms.connector.Connector
 import edu.berkeley.bidms.connector.ObjectDefinition
 import edu.berkeley.bidms.connector.ldap.event.*
+import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
@@ -52,6 +57,84 @@ class LdapConnector implements Connector {
     List<LdapRenameEventCallback> renameEventCallbacks = []
     List<LdapUpdateEventCallback> updateEventCallbacks = []
     List<LdapInsertEventCallback> insertEventCallbacks = []
+
+    // For queuing up asynchronous callback messages
+    private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
+    // If true, calls to callbacks will be done synchronously instead of
+    // asynchronously
+    boolean isSynchronousCallback = false
+    // Thread for monitoring the callback queue
+    final Thread callbackMonitorThread = (!isSynchronousCallback ? new Thread() {
+        volatile boolean requestStop = false
+
+        @Override
+        void run() {
+            while (!requestStop) {
+                try {
+                    synchronized (this) {
+                        wait(1000)
+                        LdapEventMessage eventMessage = null
+                        int dequeueCount = 0
+                        while (!requestStop && (eventMessage = callbackMessageQueue.poll())) {
+                            if (eventMessage != null) {
+                                invokeCallback(eventMessage)
+                                dequeueCount++
+                            }
+                        }
+                        if (dequeueCount) {
+                            notify()
+                        }
+                    }
+                }
+                catch (InterruptedException ignored) {
+                    // no-op
+                }
+            }
+        }
+    } : null)
+
+    void start() {
+        if (!isSynchronousCallback) {
+            callbackMonitorThread.start()
+        }
+    }
+
+    void stop() {
+        if (!isSynchronousCallback) {
+            callbackMonitorThread.requestStop = true
+            callbackMonitorThread.interrupt()
+        }
+    }
+
+    private void invokeCallback(LdapEventMessage eventMessage) {
+        switch (eventMessage.eventType) {
+            case LdapEventType.UPDATE_EVENT:
+                updateEventCallbacks?.each { it.receive((LdapUpdateEventMessage) eventMessage) }
+                break
+            case LdapEventType.INSERT_EVENT:
+                insertEventCallbacks?.each { it.receive((LdapInsertEventMessage) eventMessage) }
+                break
+            case LdapEventType.RENAME_EVENT:
+                renameEventCallbacks?.each { it.receive((LdapRenameEventMessage) eventMessage) }
+                break
+            case LdapEventType.DELETE_EVENT:
+                deleteEventCallbacks?.each { it.receive((LdapDeleteEventMessage) eventMessage) }
+                break
+            default:
+                throw new RuntimeException("Unknown LdapEventType for event message: ${eventMessage.eventType}")
+        }
+    }
+
+    void deliverCallbackMessage(LdapEventMessage eventMessage) {
+        if (isSynchronousCallback) {
+            invokeCallback(eventMessage)
+        } else {
+            synchronized (callbackMonitorThread) {
+                callbackMessageQueue.add(eventMessage)
+                callbackMonitorThread.notify()
+            }
+        }
+    }
 
     List<DirContextAdapter> searchByPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey) {
         return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
@@ -88,11 +171,15 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException(t)
         }
         finally {
-            if (exception) {
-                deleteEventCallbacks.each { it.failure(eventId, objectDef, context, pkey, dn, exception) }
-            } else {
-                deleteEventCallbacks.each { it.success(eventId, objectDef, context, pkey, dn) }
-            }
+            deliverCallbackMessage(new LdapDeleteEventMessage(
+                    isSuccess: exception == null,
+                    eventId: eventId,
+                    objectDef: objectDef,
+                    context: context,
+                    pkey: pkey,
+                    dn: dn,
+                    exception: exception
+            ))
         }
     }
 
@@ -106,11 +193,16 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException(t)
         }
         finally {
-            if (exception) {
-                renameEventCallbacks.each { it.failure(eventId, objectDef, context, pkey, oldDn, newDn, exception) }
-            } else {
-                renameEventCallbacks.each { it.success(eventId, objectDef, context, pkey, oldDn, newDn) }
-            }
+            deliverCallbackMessage(new LdapRenameEventMessage(
+                    isSuccess: exception == null,
+                    eventId: eventId,
+                    objectDef: objectDef,
+                    context: context,
+                    pkey: pkey,
+                    oldDn: oldDn,
+                    newDn: newDn,
+                    exception: exception
+            ))
         }
     }
 
@@ -216,11 +308,19 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException(t)
         }
         finally {
-            if (exception) {
-                updateEventCallbacks.each { it.failure(eventId, objectDef, context, foundObjectMethod, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, modificationItems, exception) }
-            } else {
-                updateEventCallbacks.each { it.success(eventId, objectDef, context, foundObjectMethod, pkey, oldAttributeMap, dn, convertedNewAttributeMap ?: newReplaceAttributeMap, modificationItems) }
-            }
+            deliverCallbackMessage(new LdapUpdateEventMessage(
+                    isSuccess: exception == null,
+                    eventId: eventId,
+                    objectDef: objectDef,
+                    context: context,
+                    foundMethod: foundObjectMethod,
+                    pkey: pkey,
+                    oldAttributes: oldAttributeMap,
+                    dn: dn,
+                    newAttributes: convertedNewAttributeMap ?: newReplaceAttributeMap,
+                    modificationItems: modificationItems,
+                    exception: exception
+            ))
         }
     }
 
@@ -265,11 +365,17 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException(t)
         }
         finally {
-            if (exception) {
-                insertEventCallbacks.each { it.failure(eventId, objectDef, context, pkey, dn, convertedNewAttributeMap ?: attributeMap, exception) }
-            } else {
-                insertEventCallbacks.each { it.success(eventId, objectDef, context, pkey, dn, convertedNewAttributeMap ?: attributeMap, directoryUniqueIdentifier) }
-            }
+            deliverCallbackMessage(new LdapInsertEventMessage(
+                    isSuccess: exception == null,
+                    eventId: eventId,
+                    objectDef: objectDef,
+                    context: context,
+                    pkey: pkey,
+                    dn: dn,
+                    newAttributes: convertedNewAttributeMap ?: attributeMap,
+                    globallyUniqueIdentifier: directoryUniqueIdentifier,
+                    exception: exception
+            ))
         }
     }
 
@@ -534,8 +640,8 @@ class LdapConnector implements Connector {
     @SuppressWarnings("GrMethodMayBeStatic")
     private Object convertCallerProvidedValue(Object value) {
         if (value instanceof String || value instanceof Number || value instanceof Boolean) {
-            // Directory servers interpret numbers and booleans as
-            // strings, so we use toString()
+            // Directory servers interpret numbers and booleans as strings,
+            // so we use toString()
             return value.toString()
         } else if (value == null) {
             return null

@@ -27,10 +27,7 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
-import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
 
-interface LdapDeleteEventCallback extends LdapEventCallback {
-    void success(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn)
-
-    void failure(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn, Throwable exception)
+interface LdapDeleteEventCallback extends LdapEventCallback<LdapDeleteEventMessage> {
 }

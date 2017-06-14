@@ -27,7 +27,9 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
-
-interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
+enum LdapEventType {
+    DELETE_EVENT,
+    INSERT_EVENT,
+    RENAME_EVENT,
+    UPDATE_EVENT
 }

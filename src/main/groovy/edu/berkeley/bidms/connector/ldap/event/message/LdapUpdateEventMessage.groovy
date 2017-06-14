@@ -25,9 +25,34 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event.message
 
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.FoundObjectMethod
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
 
-interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
+import javax.naming.directory.ModificationItem
+
+@ToString(includeNames = true, excludes = "modificationItems")
+@EqualsAndHashCode(excludes = "modificationItems")
+class LdapUpdateEventMessage implements LdapEventMessage {
+    LdapEventType getEventType() {
+        return LdapEventType.UPDATE_EVENT
+    }
+
+    boolean isSuccess
+    String eventId
+    LdapObjectDefinition objectDef
+    LdapCallbackContext context
+    FoundObjectMethod foundMethod
+    String pkey
+    Map<String, Object> oldAttributes
+    String dn
+    Map<String, Object> newAttributes
+    ModificationItem[] modificationItems
+    Throwable exception
 }

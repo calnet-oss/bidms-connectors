@@ -25,9 +25,26 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event.message
 
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
 
-interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
+@ToString(includeNames = true)
+@EqualsAndHashCode
+class LdapDeleteEventMessage implements LdapEventMessage {
+    LdapEventType getEventType() {
+        return LdapEventType.DELETE_EVENT
+    }
+
+    boolean isSuccess
+    String eventId
+    LdapObjectDefinition objectDef
+    LdapCallbackContext context
+    String pkey
+    String dn
+    Throwable exception
 }

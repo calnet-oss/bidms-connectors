@@ -25,9 +25,10 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event.message
 
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 
-interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
+interface LdapEventMessage {
+    LdapEventType getEventType()
 }
