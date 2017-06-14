@@ -33,5 +33,6 @@ import edu.berkeley.bidms.connector.ldap.event.LdapEventType
  * Interface for messages sent to callbacks.
  */
 interface LdapEventMessage {
+    boolean isSuccess()
     LdapEventType getEventType()
 }

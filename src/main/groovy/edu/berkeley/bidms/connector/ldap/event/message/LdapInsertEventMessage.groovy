@@ -45,7 +45,7 @@ class LdapInsertEventMessage implements LdapEventMessage {
         return LdapEventType.INSERT_EVENT
     }
 
-    boolean isSuccess
+    boolean success
     String eventId
     LdapObjectDefinition objectDef
     LdapCallbackContext context

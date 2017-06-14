@@ -263,14 +263,14 @@ class LdapConnectorSpec extends Specification {
         (!doDelete ? foundDn.dn : null) == (!doDelete ? dn : null)
         (!doDelete ? foundDn.description : null) == (!doDelete ? "updated" : null)
         deletes * deleteEventCallback.receive(_) >> { LdapDeleteEventMessage msg ->
-            assert msg.isSuccess
+            assert msg.success
             assert msg.eventId == eventId
             assert msg.objectDef == uidObjectDef
             assert msg.pkey in delPkey
             assert msg.dn in delDn
         }
         renames * renameEventCallback.receive(_) >> { LdapRenameEventMessage msg ->
-            assert msg.isSuccess
+            assert msg.success
             assert msg.eventId == eventId
             assert msg.objectDef == uidObjectDef
             assert msg.pkey == uid
@@ -278,7 +278,7 @@ class LdapConnectorSpec extends Specification {
             assert msg.newDn == dn
         }
         updates * updateEventCallback.receive(new LdapUpdateEventMessage(
-                isSuccess: true,
+                success: true,
                 eventId: eventId,
                 objectDef: uidObjectDef,
                 foundMethod: foundMethod,
@@ -302,7 +302,7 @@ class LdapConnectorSpec extends Specification {
             assert msg.modificationItems?.size()
         }
         inserts * insertEventCallback.receive(_) >> { LdapInsertEventMessage msg ->
-            assert msg.isSuccess
+            assert msg.success
             assert msg.eventId == eventId
             assert msg.objectDef == uidObjectDef
             assert msg.pkey == uid
@@ -413,7 +413,7 @@ class LdapConnectorSpec extends Specification {
         foundDn.description == "updated"
         1 * updateEventCallback.receive(
                 new LdapUpdateEventMessage(
-                        isSuccess: true,
+                        success: true,
                         eventId: eventId,
                         objectDef: uidObjectDef,
                         foundMethod: FoundObjectMethod.BY_DN_MISMATCHED_KEYS,
@@ -490,7 +490,7 @@ class LdapConnectorSpec extends Specification {
         didCreate
         retrieved.size() == 1
         retrieved.first().description == "initial test"
-        msg.isSuccess
+        msg.success
         msg.eventId == eventId
         msg.objectDef == objDef
         msg.pkey == uid

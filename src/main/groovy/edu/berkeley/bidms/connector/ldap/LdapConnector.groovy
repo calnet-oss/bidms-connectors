@@ -271,7 +271,7 @@ class LdapConnector implements Connector {
         }
         finally {
             deliverCallbackMessage(new LdapDeleteEventMessage(
-                    isSuccess: exception == null,
+                    success: exception == null,
                     eventId: eventId,
                     objectDef: objectDef,
                     context: context,
@@ -314,7 +314,7 @@ class LdapConnector implements Connector {
         }
         finally {
             deliverCallbackMessage(new LdapRenameEventMessage(
-                    isSuccess: exception == null,
+                    success: exception == null,
                     eventId: eventId,
                     objectDef: objectDef,
                     context: context,
@@ -448,7 +448,7 @@ class LdapConnector implements Connector {
         }
         finally {
             deliverCallbackMessage(new LdapUpdateEventMessage(
-                    isSuccess: exception == null,
+                    success: exception == null,
                     eventId: eventId,
                     objectDef: objectDef,
                     context: context,
@@ -521,7 +521,7 @@ class LdapConnector implements Connector {
         }
         finally {
             deliverCallbackMessage(new LdapInsertEventMessage(
-                    isSuccess: exception == null,
+                    success: exception == null,
                     eventId: eventId,
                     objectDef: objectDef,
                     context: context,
