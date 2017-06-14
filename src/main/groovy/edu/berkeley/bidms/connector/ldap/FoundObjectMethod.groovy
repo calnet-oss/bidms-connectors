@@ -50,6 +50,12 @@ enum FoundObjectMethod {
     BY_MATCHED_KEY_DN_MISMATCH,
 
     /**
+     * Indicates the object was found by its primary key but the object's
+     * DN was not provided during the persist request.
+     */
+    BY_MATCHED_KEY_DN_NOT_PROVIDED,
+
+   /**
      * Indicates there are multiple objects in the directory with the same
      * primary key but none of them match the desired DN.  The first one
      * found was selected.

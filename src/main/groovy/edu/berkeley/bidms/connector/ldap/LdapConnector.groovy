@@ -526,8 +526,11 @@ class LdapConnector implements Connector {
     /**
      * Insert, update or delete (persist) an object in the directory.
      *
+     * Special values in the attrMap:
      * <ul>
-     * <li>The requested DN of the object is in attrMap[dn].</li>
+     * <li>Optionally, the requested DN of the object is in attrMap[dn]. 
+     *     (Mandatory for an insert situation where pkey is not found in the
+     *     directory.)</li>
      * <li>The primary key of the object is in
      *     attrMap[objectDef.getPrimaryKeyAttrName()].</li>
      * <li>Optionally, the globally unique identifier of the object is in
@@ -547,7 +550,7 @@ class LdapConnector implements Connector {
      * objectDef.isRemoveDuplicatePrimaryKeys() returns true, the duplicates
      * will be deleted.
      *
-     * When attempting an update of a DN but the DN does not exist, and
+     * When attempting an update of an object but the DN does not exist, and
      * there is already an existing object in the directory with the primary
      * key, the existing object will be updated and the DN will be renamed
      * to your requested DN.  If there are multiple objects already in the
@@ -561,7 +564,7 @@ class LdapConnector implements Connector {
      * objectDef.isRemoveDuplicatePrimaryKeys()() returns true.  This
      * algorithm is:
      * <ul>
-     * <li>Use searchByPrimaryKey to find objects.</li>
+     * <li>Use searchByPrimaryKey to find objects by primary key.</li>
      * <li>If any of those match the requested DN, that object will be kept
      *     and the rest deleted.</li>
      * <li>If there's only one result found and
@@ -575,6 +578,8 @@ class LdapConnector implements Connector {
      * <li>Search the directory for the DN using lookup().  If an object is
      *     found, that means the DN exists but the primary key is a mismatch
      *     and the primary key will be updated.</li>
+     * <li>Otherwise, no existing object is found and it becomes an insert
+     *     situation.</li>
      * </ul>
      *
      * When deleting an object, any object matching the DN or the primary
@@ -629,11 +634,8 @@ class LdapConnector implements Connector {
             throw new LdapConnectorException("Directory object is missing a required value for primary key $pkeyAttrName")
         }
 
-        // DN
+        // (optional) DN
         String dn = attrMapCopy.dn
-        if (!isDelete && !dn) {
-            throw new LdapConnectorException("Directory object for $pkeyAttrName $pkey does not contain the required dn attribute")
-        }
         // Remove the dn from the object -- not an actual attribute
         attrMapCopy.remove("dn")
 
@@ -656,7 +658,7 @@ class LdapConnector implements Connector {
             DirContextAdapter existingEntry = null
             FoundObjectMethod foundObjectMethod = null
 
-            if (!existingEntry) {
+            if (!existingEntry && dn) {
                 // Find entries with matching dn.  searchResults only
                 // contains entries with matching pkey.
                 existingEntry = searchResults?.find { DirContextAdapter entry ->
@@ -667,23 +669,25 @@ class LdapConnector implements Connector {
                 }
             }
             // If none of the entries match DN but there's one value in
-            // searchResults, that means the DN has changed, but the object
-            // was found by pkey
+            // searchResults, use that.  If a dn was specified, this means
+            // the DN has changed, but the object was found by pkey.
             if (!existingEntry && searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(searchResults.first().dn.toString())) {
                 existingEntry = searchResults.first()
-                foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
+                foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
             }
             // If none of the entries match DN but there's more than one
-            // value in searchResults, that means DN has changed and one of
-            // the objects in the searchResults could be a match against the
-            // globally unique identifier, which we want to prioritize over
-            // the others.
+            // value in searchResults, the objects in the searchResults
+            // could be a match against the globally unique identifier,
+            // which we want to prioritize over the others.  If there's a
+            // match against a key and a dn was specified, this means the DN
+            // has changed.
             if (!existingEntry && searchResults?.size()) {
                 if (uniqueIdentifier) {
                     existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, uniqueIdentifier)
                 }
                 if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH
+                    // match found against the globally unique identifier
+                    foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
                 } else {
                     // If none of the entires match DN or unique identifier
                     // but there are more than one value in searchResults,
@@ -701,7 +705,7 @@ class LdapConnector implements Connector {
             }
 
             // DN may still exist but with a different primary key
-            if (!existingEntry) {
+            if (!existingEntry && dn) {
                 try {
                     existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
                 }
@@ -730,7 +734,7 @@ class LdapConnector implements Connector {
                 String existingDn = existingEntry.dn
 
                 // Check for need to move DNs
-                if (existingDn != dn) {
+                if (dn && existingDn != dn) {
                     // Move DN
                     rename(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, existingDn, dn)
                     try {
@@ -776,6 +780,9 @@ class LdapConnector implements Connector {
                 }
             } else {
                 // Doesn't already exist -- create
+                if(!dn) {
+                    throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
+                }
                 insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
                 isModified = true
             }

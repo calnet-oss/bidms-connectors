@@ -567,4 +567,48 @@ class LdapConnectorSpec extends Specification {
         "attempt deletion of non-existant DN"                     | true            | false      | "uid=foobar,dc=berkeley,dc=edu"      | null     | true        | 1             | 0
         "attempt deletion of non-existant uid"                    | true            | false      | null                                 | "foobar" | true        | 1             | 0
     }
+
+    void "test updates without specifying a DN"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+
+        when:
+        addOu("people")
+        // initial create
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : "uid=1,ou=people,dc=berkeley,dc=edu",
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ], false)
+
+        // update
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "updated"
+        ], false)
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn("uid=1,ou=people,dc=berkeley,dc=edu")
+        deleteOu("people")
+        ldapConnector.stop()
+
+        then:
+        didCreate
+        didUpdate
+        retrieved.size() == 1
+        retrieved.first().description == "updated"
+        1 * insertEventCallback.receive(_)
+        1 * updateEventCallback.receive(_)
+    }
 }
