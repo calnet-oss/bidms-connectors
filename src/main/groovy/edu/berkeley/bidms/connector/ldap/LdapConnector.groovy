@@ -240,19 +240,29 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Delete all objects in the directory for a primary key.
+     * Delete an object in the directory matching the DN.  The primary key
+     * (pkey) parameter is only passed in to pass back to the delete
+     * callback and is otherwise unused in determining which object to
+     * delete.
      *
      * @param eventId Event id
      * @param objectDef Object definition
      * @param context Callback context
-     * @param pkey Primary key
-     * @param dn Distinguished name
+     * @param pkey The primary key.  The parameter is only passed in to pass
+     *        back to the delete callback and is otherwise unused in
+     *        determining which object to delete.
+     * @param dn The distinguished name of the object to delete
      * @throws LdapConnectorException If an error occurs
      */
-    void delete(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String dn) throws LdapConnectorException {
+    void delete(
+            String eventId,
+            LdapObjectDefinition objectDef,
+            LdapCallbackContext context,
+            String pkey,
+            String dn
+    ) throws LdapConnectorException {
         Throwable exception
         try {
-            // FIXME: This isn't deleting all objects by the primary key when isRemoveDuplicatePrimaryKeys() is true.
             ldapTemplate.unbind(buildDnName(dn))
         }
         catch (Throwable t) {
@@ -286,7 +296,14 @@ class LdapConnector implements Connector {
      *        renamed.
      * @throws LdapConnectorException If an error occurs
      */
-    void rename(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey, String oldDn, String newDn) throws LdapConnectorException {
+    void rename(
+            String eventId,
+            LdapObjectDefinition objectDef,
+            LdapCallbackContext context,
+            String pkey,
+            String oldDn,
+            String newDn
+    ) throws LdapConnectorException {
         Throwable exception
         try {
             ldapTemplate.rename(buildDnName(oldDn), buildDnName(newDn))
@@ -592,10 +609,10 @@ class LdapConnector implements Connector {
      *        be detected properly, attribute names are case sensitive and
      *        must match the case of the attribute names in the directory
      *        schema.
-     * @param isDelete If true, the objects matching the distinguished name
-     *        and primary key will be deleted.  If there are multiple
-     *        objects in the directory for the primary key, as returned by
-     *        searchByPrimaryKey(), then they will all be deleted.
+     * @param isDelete If true, the object matching the distinguished name
+     *        will be deleted.  If objectDef.isRemoveDuplicatePrimaryKeys()
+     *        is true, all objects matching the primary key, as returned by
+     *        searchByPrimaryKey(), will be deleted.
      * @return true if an update actually occured in the directory.  false
      *         may be returned if the object is unchanged.
      * @throws LdapConnectorException If an error occurs
@@ -623,26 +640,17 @@ class LdapConnector implements Connector {
         // primary key
         String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
         String pkey = attrMapCopy[pkeyAttrName]
-        if (!pkey) {
-            throw new LdapConnectorException("LDAP object is missing a required value for primary key $pkeyAttrName")
+        if (!isDelete && !pkey) {
+            throw new LdapConnectorException("Directory object is missing a required value for primary key $pkeyAttrName")
         }
 
         // DN
-        String dn = null
-        if (!isDelete) {
-            dn = attrMapCopy.dn
-            if (!dn) {
-                throw new LdapConnectorException("LDAP object for $pkeyAttrName $pkey does not contain the required dn attribute")
-            }
+        String dn = attrMapCopy.dn
+        if (!isDelete && !dn) {
+            throw new LdapConnectorException("Directory object for $pkeyAttrName $pkey does not contain the required dn attribute")
         }
         // Remove the dn from the object -- not an actual attribute
         attrMapCopy.remove("dn")
-
-        // See if records belonging to the globally unique identifier or
-        // pkey exist
-        List<DirContextAdapter> searchResults = (uniqueIdentifier
-                ? searchByGloballyUniqueIdentifierOrPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier, pkey)
-                : searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey))
 
         boolean isModified = false
 
@@ -656,6 +664,13 @@ class LdapConnector implements Connector {
             // primary key.  In that case, use that object, but the primary
             // key will be updated.
             //
+
+            // See if records belonging to the globally unique identifier or
+            // pkey exist
+            List<DirContextAdapter> searchResults = (uniqueIdentifier
+                    ? searchByGloballyUniqueIdentifierOrPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, uniqueIdentifier, pkey)
+                    : searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey))
+
 
             DirContextAdapter existingEntry = null
             FoundObjectMethod foundObjectMethod = null
@@ -721,8 +736,8 @@ class LdapConnector implements Connector {
             }
 
             if (((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
-                // Delete all the entriepersistences that we're not keeping
-                // as the existingEntry
+                // Delete all the entries that we're not keeping as the
+                // existingEntry
                 searchResults.each { DirContextAdapter entry ->
                     if (entry.dn != existingEntry?.dn) {
                         delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn.toString())
@@ -788,9 +803,34 @@ class LdapConnector implements Connector {
             }
         } else {
             // is a deletion for the DN and/or pkey
-            searchResults.each { DirContextAdapter entry ->
-                delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn.toString())
-                isModified = true
+
+            if (!dn && !pkey) {
+                throw new LdapConnectorException("When deleting, at least one of dn or $pkeyAttrName must be set in the attribute map")
+            }
+
+            // Delete by DN
+            if (dn) {
+                try {
+                    DirContextAdapter entryByDN = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
+                    String entryByDNPkey = ((Attribute) entryByDN.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
+                    delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, entryByDNPkey, entryByDN.dn.toString())
+                    isModified = true
+                }
+                catch (NameNotFoundException ignored) {
+                    // not found by DN: no-op
+                }
+            }
+
+            // Delete by primary key
+            if (pkey) {
+                if (((LdapObjectDefinition) objectDef).removeDuplicatePrimaryKeys) {
+                    List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
+                    searchResults.each { DirContextAdapter entry ->
+                        String entryPkey = ((Attribute) entry.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
+                        delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, entryPkey, entry.dn.toString())
+                        isModified = true
+                    }
+                }
             }
         }
 
