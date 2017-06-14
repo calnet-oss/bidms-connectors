@@ -43,7 +43,7 @@ import javax.naming.Name
 import javax.naming.directory.*
 
 /**
- * Connector for LDAP and Active Directory.
+ * Connector for LDAP and Active Directory directory servers.
  */
 @Slf4j
 class LdapConnector implements Connector {
@@ -489,7 +489,7 @@ class LdapConnector implements Connector {
         try {
             // Spring method naming is a little confusing.  Spring uses the word
             // "bind" and "rebind" to mean "create" and "update." In this
-            // context, it does not mean "authenticate (bind) to the LDAP
+            // context, it does not mean "authenticate (bind) to the directory
             // server.
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
