@@ -104,7 +104,7 @@ class LdapConnector implements Connector {
     /**
      * Thread for monitoring the callback queue
      */
-    final LdapCallbackMonitorThread callbackMonitorThread = (!isSynchronousCallback ? new LdapCallbackMonitorThread(this) : null)
+    LdapCallbackMonitorThread callbackMonitorThread
 
     /**
      * Start the LDAP connector.  Responsible for starting the callback
@@ -112,6 +112,7 @@ class LdapConnector implements Connector {
      */
     void start() {
         if (!isSynchronousCallback) {
+            this.callbackMonitorThread = new LdapCallbackMonitorThread(this)
             callbackMonitorThread.start()
         }
     }
