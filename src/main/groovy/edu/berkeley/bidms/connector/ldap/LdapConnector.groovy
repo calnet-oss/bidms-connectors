@@ -357,6 +357,29 @@ class LdapConnector implements Connector {
         }
     }
 
+    static class CaseInsensitiveString {
+        String str
+
+        CaseInsensitiveString(String str) {
+            this.str = str
+        }
+
+        @Override
+        int hashCode() {
+            return str.toLowerCase().hashCode()
+        }
+
+        @Override
+        boolean equals(Object obj) {
+            return str.toLowerCase().equals(obj?.toString()?.trim()?.toLowerCase())
+        }
+
+        @Override
+        String toString() {
+            return str.toString()
+        }
+    }
+
     /**
      * Update an existing directory object with given values.
      *
@@ -416,22 +439,17 @@ class LdapConnector implements Connector {
 
             newAppendOnlyAttributeMap?.each {
                 if (attributesToKeepOrUpdate.containsKey(it.key)) {
-                    // append
-                    if (attributesToKeepOrUpdate[it.key] instanceof List) {
-                        // it's already a list -- append to the existing
-                        // list, but prevent duplicates
-                        HashSet set = new HashSet((List) attributesToKeepOrUpdate[it.key])
-                        set.addAll(it.value)
-                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
-                    } else {
-                        // it's a single value -- create a list containing
-                        // existing value plus new values, but prevent
-                        // duplicates
-                        HashSet set = new HashSet()
-                        set.add(attributesToKeepOrUpdate[it.key])
-                        set.addAll(it.value)
-                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
+                    // append to the existing list, but prevent case-insensitive duplicates
+                    if (!(attributesToKeepOrUpdate[it.key] instanceof List)) {
+                        attributesToKeepOrUpdate[it.key] = [attributesToKeepOrUpdate[it.key]]
                     }
+                    HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) attributesToKeepOrUpdate[it.key]).collect { new CaseInsensitiveString(it.toString().trim()) })
+                    if (it.value instanceof List) {
+                        set.addAll(((List) it.value).collect { new CaseInsensitiveString(it.toString().trim()) })
+                    } else {
+                        set.add(new CaseInsensitiveString(it.value.toString().trim()))
+                    }
+                    attributesToKeepOrUpdate[it.key] = new ArrayList<String>(set*.toString())
                 } else {
                     // insert
                     attributesToKeepOrUpdate[it.key] = it.value
