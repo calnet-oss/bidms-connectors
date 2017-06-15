@@ -52,24 +52,16 @@ public interface LdapObjectDefinition extends ObjectDefinition {
 
     /**
      * Get a Spring LdapQuery object to query the directory for objects by a
-     * globally unique identifier or a primary key value.
-     *
-     * @param uniqueIdentifier The globally unique identifier value.
-     * @param pkey             The primary key value.
-     * @return The Spring LdapQuery object to query the directory for objects
-     * by their keys.
-     */
-    LdapQuery getLdapQueryForGloballyUniqueIdentifierOrPrimaryKey(Object uniqueIdentifier, String pkey);
-
-    /**
-     * Get a Spring LdapQuery object to query the directory for objects by a
      * globally unique identifier.
      *
+     * @param pkey             When searching by globally unique identifier,
+     *                         the object must also match this expected
+     *                         primary key.
      * @param uniqueIdentifier The globally unique identifier value.
      * @return The Spring LdapQuery object to query the directory for objects
      * by their globally unique identifier.
      */
-    LdapQuery getLdapQueryForGloballyUniqueIdentifier(Object uniqueIdentifier);
+    LdapQuery getLdapQueryForGloballyUniqueIdentifier(String pkey, Object uniqueIdentifier);
 
     /**
      * Get a Spring LdapQuery object to query the directory for objects by a
@@ -123,4 +115,11 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * attributes, to append to rather than overwrite when updating.
      */
     String[] getAppendOnlyAttributeNames();
+
+    /**
+     * @return true indicates that when updating an object with a primary key
+     * and the DN doesn't match the requested DN, to rename the object to the
+     * requested DN.
+     */
+    boolean isRenamingEnabled();
 }

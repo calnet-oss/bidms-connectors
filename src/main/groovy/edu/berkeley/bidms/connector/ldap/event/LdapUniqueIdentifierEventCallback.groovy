@@ -25,32 +25,13 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event.message
+package edu.berkeley.bidms.connector.ldap.event
 
-import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
-import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
-import edu.berkeley.bidms.connector.ldap.event.LdapEventType
-import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
-import groovy.transform.EqualsAndHashCode
-import groovy.transform.ToString
-
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
 
 /**
- * Insert messages sent to callbacks.
+ * Callback for events where the unique identifier has been created or possibly changed.
+ * It's possible this callback is called on rename and update events where the directory has not actually changed the unique identifier.
  */
-@ToString(includeNames = true)
-@EqualsAndHashCode
-class LdapInsertEventMessage implements LdapEventMessage {
-    LdapEventType getEventType() {
-        return LdapEventType.INSERT_EVENT
-    }
-
-    boolean success
-    String eventId
-    LdapObjectDefinition objectDef
-    LdapCallbackContext context
-    String pkey
-    String dn
-    Map<String, Object> newAttributes
-    Throwable exception
+interface LdapUniqueIdentifierEventCallback extends LdapEventCallback<LdapUniqueIdentifierEventMessage> {
 }

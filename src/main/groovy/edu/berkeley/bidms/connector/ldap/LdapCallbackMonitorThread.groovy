@@ -47,6 +47,8 @@ class LdapCallbackMonitorThread extends Thread {
      */
     LdapCallbackMonitorThread(LdapConnector ldapConnector) {
         this.ldapConnector = ldapConnector
+        setName("LDAP Connector Callback Queue Monitor")
+        setDaemon(false)
     }
 
     /**
