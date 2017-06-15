@@ -33,6 +33,7 @@ import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
+import org.springframework.ldap.query.LdapQuery
 import software.apacheds.embedded.EmbeddedLdapServer
 import spock.lang.Shared
 import spock.lang.Specification
@@ -303,7 +304,7 @@ class LdapConnectorSpec extends Specification {
                 objectDef: uidObjectDef,
                 pkey: uid,
                 dn: dn,
-                newAttributes:  [
+                newAttributes: [
                         uid        : uid,
                         objectClass: objectClasses,
                         sn         : "User",
@@ -694,5 +695,61 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "initial test"
         1 * insertEventCallback.receive(_)
         uniqueIdentifier?.length()
+    }
+
+    void "test persistence when retrieving-by-primary-key is disabled"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, false, null, false) {
+            @Override
+            LdapQuery getLdapQueryForPrimaryKey(String pkey) {
+                // searching by primary key is disabled by returning null
+                return null
+            }
+        }
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn1 = "uid=1,ou=people,dc=berkeley,dc=edu"
+        String dn2 = "uid=1,ou=expired people,dc=berkeley,dc=edu"
+
+        when:
+        addOu("people")
+        addOu("expired people")
+        // create #1
+        boolean didCreate1 = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn1,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "test #1"
+        ], false)
+
+        // create #2
+        boolean didCreate2 = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn2,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "test #2"
+        ], false)
+
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn1)
+        deleteDn(dn2)
+        deleteOu("people")
+        deleteOu("expired people")
+
+        then:
+        didCreate1
+        retrieved.size() == 2
+        retrieved*.description.sort() == ["test #1", "test #2"].sort()
+        2 * insertEventCallback.receive(_)
+        0 * updateEventCallback.receive(_)
+        0 * renameEventCallback.receive(_)
     }
 }

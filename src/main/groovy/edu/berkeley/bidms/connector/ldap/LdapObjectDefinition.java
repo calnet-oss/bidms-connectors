@@ -69,7 +69,8 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      *
      * @param pkey The primary key value.
      * @return The Spring LdapQuery object to query the directory for objects
-     * by their primary key.
+     * by their primary key.  null if searching by primary key is not
+     * supported.
      */
     LdapQuery getLdapQueryForPrimaryKey(String pkey);
 
