@@ -63,13 +63,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     private String[] appendOnlyAttributeNames;
 
-    /**
-     * true indicates that when updating an object with a primary key
-     * and the DN doesn't match the requested DN, to rename the object to the
-     * requested DN.
-     */
-    private boolean renamingEnabled;
-
     public UidObjectDefinition() {
     }
 
@@ -77,14 +70,12 @@ public class UidObjectDefinition implements LdapObjectDefinition {
             String objectClass,
             boolean keepExistingAttributesWhenUpdating,
             boolean removeDuplicatePrimaryKeys,
-            String[] appendOnlyAttributeNames,
-            boolean renamingEnabled
+            String[] appendOnlyAttributeNames
     ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-        this.renamingEnabled = renamingEnabled;
     }
 
     /**
@@ -257,28 +248,10 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     }
 
     /**
-     * @return true indicates that when updating an object with a primary key
-     * and the DN doesn't match the requested DN, to rename the object to the
-     * requested DN.
-     */
-    @Override
-    public boolean isRenamingEnabled() {
-        return renamingEnabled;
-    }
-
-    /**
-     * @param renamingEnabled true indicates that when updating an object
-     *                        with a primary key and the DN doesn't match the
-     *                        requested DN, to rename the object to the
-     *                        requested DN.
-     */
-    public void setRenamingEnabled(boolean renamingEnabled) {
-        this.renamingEnabled = renamingEnabled;
-    }
-
-    /**
      * @return An array of attribute names indicating attributes that should
-     * only be inserted and should be left alone during updates.
+     * only be inserted and should be left alone during updates.  'dn' may be
+     * included, which is a special case that will disable renaming the
+     * object.
      */
     public String[] getInsertOnlyAttributeNames() {
         return new String[]{};
