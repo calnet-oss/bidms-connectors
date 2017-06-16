@@ -37,6 +37,7 @@ import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
+import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
 
 import javax.naming.Name
@@ -186,16 +187,20 @@ class LdapConnector implements Connector {
     }
 
     /**
-     * Search the directory for objects for a primary key.
+     * Search the directory for objects for a primary key if
+     * search-by-primary-key is enabled.  Search-by-primary-key is disabled
+     * if objectDef.getLdapQueryForPrimaryKey(pkey) returns null.
      *
      * @param eventId Event id
      * @param objectDef Object definition
      * @param context Callback context
      * @param pkey Primary key
-     * @return A list of objects found in the directory
+     * @return A list of objects found in the directory if search by primary
+     *         key is enabled, null otherwise.
      */
     List<DirContextAdapter> searchByPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey) {
-        return ldapTemplate.search(objectDef.getLdapQueryForPrimaryKey(pkey), toDirContextAdapterContextMapper)
+        LdapQuery query = objectDef.getLdapQueryForPrimaryKey(pkey)
+        return (query ? ldapTemplate.search(query, toDirContextAdapterContextMapper) : null)
     }
 
     /**
@@ -352,6 +357,29 @@ class LdapConnector implements Connector {
         }
     }
 
+    static class CaseInsensitiveString {
+        String str
+
+        CaseInsensitiveString(String str) {
+            this.str = str
+        }
+
+        @Override
+        int hashCode() {
+            return str.toLowerCase().hashCode()
+        }
+
+        @Override
+        boolean equals(Object obj) {
+            return str.toLowerCase().equals(obj?.toString()?.trim()?.toLowerCase())
+        }
+
+        @Override
+        String toString() {
+            return str.toString()
+        }
+    }
+
     /**
      * Update an existing directory object with given values.
      *
@@ -411,22 +439,17 @@ class LdapConnector implements Connector {
 
             newAppendOnlyAttributeMap?.each {
                 if (attributesToKeepOrUpdate.containsKey(it.key)) {
-                    // append
-                    if (attributesToKeepOrUpdate[it.key] instanceof List) {
-                        // it's already a list -- append to the existing
-                        // list, but prevent duplicates
-                        HashSet set = new HashSet((List) attributesToKeepOrUpdate[it.key])
-                        set.addAll(it.value)
-                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
-                    } else {
-                        // it's a single value -- create a list containing
-                        // existing value plus new values, but prevent
-                        // duplicates
-                        HashSet set = new HashSet()
-                        set.add(attributesToKeepOrUpdate[it.key])
-                        set.addAll(it.value)
-                        attributesToKeepOrUpdate[it.key] = new ArrayList(set)
+                    // append to the existing list, but prevent case-insensitive duplicates
+                    if (!(attributesToKeepOrUpdate[it.key] instanceof List)) {
+                        attributesToKeepOrUpdate[it.key] = [attributesToKeepOrUpdate[it.key]]
                     }
+                    HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) attributesToKeepOrUpdate[it.key]).collect { new CaseInsensitiveString(it.toString().trim()) })
+                    if (it.value instanceof List) {
+                        set.addAll(((List) it.value).collect { new CaseInsensitiveString(it.toString().trim()) })
+                    } else {
+                        set.add(new CaseInsensitiveString(it.value.toString().trim()))
+                    }
+                    attributesToKeepOrUpdate[it.key] = new ArrayList<String>(set*.toString())
                 } else {
                     // insert
                     attributesToKeepOrUpdate[it.key] = it.value
@@ -455,11 +478,14 @@ class LdapConnector implements Connector {
             }
 
             changedAttributes.each { Map.Entry<String, Object> entry ->
-                if (entry.value instanceof Collection) {
-                    existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
-                } else if (entry.value) {
-                    existingEntry.setAttributeValues(entry.key, [entry.value] as Object[])
+                Collection toKeepOrUpdateCollection = (attributesToKeepOrUpdate[entry.key] instanceof Collection ? (Collection) attributesToKeepOrUpdate[entry.key] : [attributesToKeepOrUpdate[entry.key]])
+                if (oldAttributeMap[entry.key] instanceof Collection) {
+                    Collection attrsToRemove = ((Collection) oldAttributeMap[entry.key]) - toKeepOrUpdateCollection
+                    attrsToRemove.each {
+                        existingEntry.removeAttributeValue(entry.key, it)
+                    }
                 }
+                existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray())
             }
 
             modificationItems = existingEntry.modificationItems
@@ -563,11 +589,14 @@ class LdapConnector implements Connector {
     /**
      * Insert, update or delete (persist) an object in the directory.
      *
+     * <p/>
+     *
      * Special values in the attrMap:
      * <ul>
      * <li>Optionally, the requested DN of the object is in attrMap[dn]. 
-     *     (Mandatory for an insert situation where pkey is not found in the
-     *     directory.)</li>
+     *     Mandatory for an insert situation where pkey is not found in the
+     *     directory.
+     *     Also mandatory if search-by-primary-key is disabled.</li>
      * <li>The primary key of the object is in
      *     attrMap[objectDef.getPrimaryKeyAttrName()].</li>
      * <li>Optionally, the globally unique identifier of the object is in
@@ -577,8 +606,12 @@ class LdapConnector implements Connector {
      *     automatically by the directory.</li>
      * </ul>
      *
-     * Existing objects are found via searchByPrimaryKey() or lookup().
+     * Existing objects are found via searchByPrimaryKey() (if enabled)
+     * or lookup().
      *
+     * <p/>
+     *
+     * (Only applies if search-by-primary-key is enabled).
      * When attempting an insert of a new DN, if there is already an
      * existing object in the directory with the primary key, the existing
      * object will be updated instead and the DN will be renamed to your
@@ -587,6 +620,9 @@ class LdapConnector implements Connector {
      * but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
      * returns true, the duplicates will be deleted.
      *
+     * <p/>
+     *
+     * (Only applies if search-by-primary-key is enabled).
      * When attempting an update of an object but the DN does not exist, and
      * there is already an existing object in the directory with the primary
      * key, the existing object will be updated and the DN will be renamed
@@ -595,6 +631,9 @@ class LdapConnector implements Connector {
      * key but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
      * returns true, the duplicates will be deleted.
      *
+     * <p/>
+     *
+     * (Only applies if search-by-primary-key is enabled).
      * When inserting or updating and multiple objects with the same primary
      * key are found, there is an algorithm for determining which one to
      * update.  The rest are deleted if
@@ -619,9 +658,13 @@ class LdapConnector implements Connector {
      *     situation.</li>
      * </ul>
      *
+     * <p/>
+     *
      * When deleting an object, any object matching the DN or the primary
-     * key (if objectDef.isRemoveDuplicatePrimaryKeys() returns true) will
-     * be deleted.
+     * key (if objectDef.isRemoveDuplicatePrimaryKeys() returns true and
+     * search-by-primary-key is enabled) will be deleted.
+     *
+     * <p/>
      *
      * For changes to be detected properly, attribute names in the attrMap
      * are case sensitive.  Attribute strings must match the case of the
@@ -639,7 +682,7 @@ class LdapConnector implements Connector {
      * @param isDelete If true, the object matching the distinguished name
      *        will be deleted.  If objectDef.isRemoveDuplicatePrimaryKeys()
      *        is true, all objects matching the primary key, as returned by
-     *        searchByPrimaryKey(), will be deleted.
+     *        searchByPrimaryKey() (if enabled), will be deleted.
      * @return true if an update actually occured in the directory.  false
      *         may be returned if the object is unchanged.
      * @throws LdapConnectorException If an error occurs
@@ -690,7 +733,9 @@ class LdapConnector implements Connector {
             // key will be updated.
             //
 
-            // See if records belonging to the pkey exist
+            // See if records belonging to the pkey exist.
+            // This will return null if objectDef.getLdapQueryForPrimaryKey()
+            // returns null, indicating search-by-primary-key is disabled.
             List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
 
             DirContextAdapter existingEntry = null
