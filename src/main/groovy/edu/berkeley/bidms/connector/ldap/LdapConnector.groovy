@@ -827,7 +827,7 @@ class LdapConnector implements Connector {
                 }
             }
 
-            boolean renamingEnabled = !((LdapObjectDefinition)objectDef).insertOnlyAttributeNames?.contains("dn")
+            boolean renamingEnabled = !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains("dn")
 
             if (existingEntry) {
                 // Already exists -- update

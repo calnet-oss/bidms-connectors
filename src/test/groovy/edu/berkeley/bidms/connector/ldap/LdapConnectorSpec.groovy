@@ -152,7 +152,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[])
+        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[], null)
 
         when:
         addOu("people")
@@ -207,7 +207,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null, null)
         String eventId = "eventId"
 
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
@@ -348,7 +348,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test persist return value on a non-modification"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null)
 
         when:
         addOu("people")
@@ -384,7 +384,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null, null)
 
         addOu("namespace")
 
@@ -455,7 +455,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test asynchronous callback"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -520,7 +520,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test deletes"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null, null)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -582,7 +582,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates without specifying a DN"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -617,12 +617,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates with renaming disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null) {
-            @Override
-            String[] getInsertOnlyAttributeNames() {
-                return ["dn"] as String[]
-            }
-        }
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["dn"] as String[])
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -671,7 +666,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test retrieving globally unique identifier"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null)
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -708,7 +703,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test persistence when retrieving-by-primary-key is disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, false, null) {
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, false, null, null) {
             @Override
             LdapQuery getLdapQueryForPrimaryKey(String pkey) {
                 // searching by primary key is disabled by returning null
@@ -766,7 +761,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test changing lists that have same values, just in a different case"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null)
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null)
         String eventId = "eventId"
         String uid = "1"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -815,12 +810,7 @@ class LdapConnectorSpec extends Specification {
 
     void "test insert-only attribute"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null) {
-            @Override
-            String[] getInsertOnlyAttributeNames() {
-                return ["cn"] as String[]
-            }
-        }
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["cn"] as String[])
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
