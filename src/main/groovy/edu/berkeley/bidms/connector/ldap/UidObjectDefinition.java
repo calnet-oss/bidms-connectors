@@ -57,11 +57,19 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private boolean removeDuplicatePrimaryKeys;
 
     /**
-     * A list of attribute names, which must be multi-value attributes, to
+     * An array of attribute names, which must be multi-value attributes, to
      * append to rather than overwrite when updating. A common example would
      * be objectClass.
      */
     private String[] appendOnlyAttributeNames;
+
+    /**
+     * An array of attribute names indicating attributes that should
+     * only be inserted and should be left alone during updates.  'dn' may be
+     * included, which is a special case that will disable renaming the
+     * object.
+     */
+    private String[] insertOnlyAttributeNames;
 
     public UidObjectDefinition() {
     }
@@ -70,12 +78,14 @@ public class UidObjectDefinition implements LdapObjectDefinition {
             String objectClass,
             boolean keepExistingAttributesWhenUpdating,
             boolean removeDuplicatePrimaryKeys,
-            String[] appendOnlyAttributeNames
+            String[] appendOnlyAttributeNames,
+            String[] insertOnlyAttributeNames
     ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
+        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
     }
 
     /**
@@ -254,6 +264,18 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      * object.
      */
     public String[] getInsertOnlyAttributeNames() {
-        return new String[]{};
+        return insertOnlyAttributeNames;
+    }
+
+    /**
+     * @param insertOnlyAttributeNames An array of attribute names indicating
+     *                                 attributes that should only be
+     *                                 inserted and should be left alone
+     *                                 during updates.  'dn' may be included,
+     *                                 which is a special case that will
+     *                                 disable renaming the object.
+     */
+    public void setInsertOnlyAttributeNames(String[] insertOnlyAttributeNames) {
+        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
     }
 }
