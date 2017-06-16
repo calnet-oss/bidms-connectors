@@ -478,11 +478,14 @@ class LdapConnector implements Connector {
             }
 
             changedAttributes.each { Map.Entry<String, Object> entry ->
-                if (entry.value instanceof Collection) {
-                    existingEntry.setAttributeValues(entry.key, ((Collection) entry.value).toArray())
-                } else if (entry.value) {
-                    existingEntry.setAttributeValues(entry.key, [entry.value] as Object[])
+                Collection toKeepOrUpdateCollection = (attributesToKeepOrUpdate[entry.key] instanceof Collection ? (Collection) attributesToKeepOrUpdate[entry.key] : [attributesToKeepOrUpdate[entry.key]])
+                if (oldAttributeMap[entry.key] instanceof Collection) {
+                    Collection attrsToRemove = ((Collection) oldAttributeMap[entry.key]) - toKeepOrUpdateCollection
+                    attrsToRemove.each {
+                        existingEntry.removeAttributeValue(entry.key, it)
+                    }
                 }
+                existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray())
             }
 
             modificationItems = existingEntry.modificationItems
