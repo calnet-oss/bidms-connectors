@@ -123,4 +123,10 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * requested DN.
      */
     boolean isRenamingEnabled();
+
+    /**
+     * @return An array of attribute names indicating attributes that should
+     * only be inserted and should be left alone during updates.
+     */
+    String[] getInsertOnlyAttributeNames();
 }

@@ -275,4 +275,12 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     public void setRenamingEnabled(boolean renamingEnabled) {
         this.renamingEnabled = renamingEnabled;
     }
+
+    /**
+     * @return An array of attribute names indicating attributes that should
+     * only be inserted and should be left alone during updates.
+     */
+    public String[] getInsertOnlyAttributeNames() {
+        return new String[]{};
+    }
 }

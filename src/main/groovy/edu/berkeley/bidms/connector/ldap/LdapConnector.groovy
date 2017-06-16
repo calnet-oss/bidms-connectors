@@ -849,7 +849,9 @@ class LdapConnector implements Connector {
                     wasRenamed = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
+                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>((Map<String, Object>) attrMapCopy.findAll {
+                    !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains(it.key)
+                })
                 Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
                 ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
                     if (newReplaceAttributeMap.containsKey(attrName)) {

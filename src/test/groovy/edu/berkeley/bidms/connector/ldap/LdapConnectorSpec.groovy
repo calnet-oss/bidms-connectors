@@ -807,4 +807,56 @@ class LdapConnectorSpec extends Specification {
         "same list, just differently cases"       | ["top", "inetorgperson", "person", "organizationalperson"] | true
         "remove one attribute from original list" | ["top", "inetOrgPerson", "person"]                         | false
     }
+
+    void "test insert-only attribute"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true) {
+            @Override
+            String[] getInsertOnlyAttributeNames() {
+                return ["cn"] as String[]
+            }
+        }
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        addOu("people")
+        // create
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ], false)
+
+        // update
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "IGNORED", // not updated because cn in getInsertOnlyAttributeNames()
+                description: "updated"
+        ], false)
+
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didCreate
+        didUpdate
+        retrieved.size() == 1
+        retrieved.first().description == "updated"
+        retrieved.first().cn == "Test User"
+        1 * insertEventCallback.receive(_)
+        1 * updateEventCallback.receive(_)
+    }
 }
