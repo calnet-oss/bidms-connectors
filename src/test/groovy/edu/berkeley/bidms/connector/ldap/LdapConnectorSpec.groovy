@@ -756,4 +756,55 @@ class LdapConnectorSpec extends Specification {
         0 * updateEventCallback.receive(_)
         0 * renameEventCallback.receive(_)
     }
+
+
+    @Unroll("#description")
+    void "test changing lists that have same values, just in a different case"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, true)
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        addOu("people")
+        // initial create
+        addTestEntry(dn, uid)
+
+        // update
+        boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "updated"
+        ], false)
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didUpdate
+        retrieved.size() == 1
+        retrieved.first().description == "updated"
+        retrieved.first().objectClass.sort() == objectClasses.sort()
+        1 * updateEventCallback.receive(_) >> { LdapUpdateEventMessage msg ->
+            if (expectListReplace) {
+                // all the mods should be REPLACE_ATTRIBUTE
+                assert !msg.modificationItems.any { it.modificationOp != DirContextAdapter.REPLACE_ATTRIBUTE }
+            } else {
+                // when not replacing the entire list, there should be at least one REMOVE
+                assert msg.modificationItems.any { it.modificationOp == DirContextAdapter.REMOVE_ATTRIBUTE }
+            }
+        }
+
+        where:
+        description                               | objectClasses                                              | expectListReplace
+        "same list, just differently cases"       | ["top", "inetorgperson", "person", "organizationalperson"] | true
+        "remove one attribute from original list" | ["top", "inetOrgPerson", "person"]                         | false
+    }
 }

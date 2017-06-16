@@ -481,11 +481,27 @@ class LdapConnector implements Connector {
                 Collection toKeepOrUpdateCollection = (attributesToKeepOrUpdate[entry.key] instanceof Collection ? (Collection) attributesToKeepOrUpdate[entry.key] : [attributesToKeepOrUpdate[entry.key]])
                 if (oldAttributeMap[entry.key] instanceof Collection) {
                     Collection attrsToRemove = ((Collection) oldAttributeMap[entry.key]) - toKeepOrUpdateCollection
-                    attrsToRemove.each {
-                        existingEntry.removeAttributeValue(entry.key, it)
+
+                    // See if an attribute is being replaced with the same
+                    // value, just a different case.  In these cases we need
+                    // to force a REPLACE_ATTRIBUTE ModificationItem rather
+                    // than a REMOVE/ADD.  We force this by passing
+                    // "orderMatters=true" to
+                    // existingEntry.setAttributeValues().
+                    boolean hasADifferentCasedValue = attrsToRemove.any { it.toString().toLowerCase().trim() in toKeepOrUpdateCollection.collect { it.toString().toLowerCase().trim() } }
+                    if (hasADifferentCasedValue) {
+                        // REPLACE approach
+                        existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray(), true)
+                    } else {
+                        // ADD/REMOVE approach
+                        attrsToRemove.each {
+                            existingEntry.removeAttributeValue(entry.key, it)
+                        }
+                        existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray())
                     }
+                } else {
+                    existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray())
                 }
-                existingEntry.setAttributeValues(entry.key, toKeepOrUpdateCollection.toArray())
             }
 
             modificationItems = existingEntry.modificationItems
