@@ -631,10 +631,10 @@ class LdapConnector implements Connector {
      * When attempting an insert of a new DN, if there is already an
      * existing object in the directory with the primary key, the existing
      * object will be updated instead and the DN will be renamed to your
-     * requested DN, if objectDef.renamingEnabled is true.  If there are
-     * multiple objects already in the directory with the same primary key
-     * but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
-     * returns true, the duplicates will be deleted.
+     * requested DN, if renaming is enabled.  If there are multiple objects
+     * already in the directory with the same primary key but different DNs
+     * and objectDef.isRemoveDuplicatePrimaryKeys() returns true, the
+     * duplicates will be deleted.
      *
      * <p/>
      *
@@ -642,10 +642,10 @@ class LdapConnector implements Connector {
      * When attempting an update of an object but the DN does not exist, and
      * there is already an existing object in the directory with the primary
      * key, the existing object will be updated and the DN will be renamed
-     * to your requested DN, if objectDef.renamingEnabled is true.  If there
-     * are multiple objects already in the directory with the same primary
-     * key but different DNs and objectDef.isRemoveDuplicatePrimaryKeys()
-     * returns true, the duplicates will be deleted.
+     * to your requested DN, if renaming is enabled.  If there are multiple
+     * objects already in the directory with the same primary key but
+     * different DNs and objectDef.isRemoveDuplicatePrimaryKeys() returns
+     * true, the duplicates will be deleted.
      *
      * <p/>
      *
@@ -827,13 +827,15 @@ class LdapConnector implements Connector {
                 }
             }
 
+            boolean renamingEnabled = !((LdapObjectDefinition)objectDef).insertOnlyAttributeNames?.contains("dn")
+
             if (existingEntry) {
                 // Already exists -- update
 
                 String existingDn = existingEntry.dn
 
                 // Check for need to move DNs
-                if (((LdapObjectDefinition) objectDef).renamingEnabled && dn && existingDn != dn) {
+                if (renamingEnabled && dn && existingDn != dn) {
                     // Move DN
                     rename(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, existingDn, dn)
                     try {
@@ -849,7 +851,9 @@ class LdapConnector implements Connector {
                     wasRenamed = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
+                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>((Map<String, Object>) attrMapCopy.findAll {
+                    !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains(it.key)
+                })
                 Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
                 ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
                     if (newReplaceAttributeMap.containsKey(attrName)) {
@@ -890,7 +894,7 @@ class LdapConnector implements Connector {
                 // from the input.  We want to give the caller the chance
                 // to store it and send it next time in the attrMap.
                 //
-                boolean renamingDisabledCase = !((LdapObjectDefinition) objectDef).renamingEnabled &&
+                boolean renamingDisabledCase = !renamingEnabled &&
                         uniqueIdentifierAttrName &&
                         uniqueIdentifierEventCallbacks &&
                         dn && existingEntry.dn.toString() != dn

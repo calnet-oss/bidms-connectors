@@ -118,9 +118,10 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     String[] getAppendOnlyAttributeNames();
 
     /**
-     * @return true indicates that when updating an object with a primary key
-     * and the DN doesn't match the requested DN, to rename the object to the
-     * requested DN.
+     * @return An array of attribute names indicating attributes that should
+     * only be inserted and should be left alone during updates.  'dn' may be
+     * included, which is a special case that will disable renaming the
+     * object.
      */
-    boolean isRenamingEnabled();
+    String[] getInsertOnlyAttributeNames();
 }
