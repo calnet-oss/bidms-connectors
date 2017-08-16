@@ -37,8 +37,8 @@ import static org.springframework.ldap.query.LdapQueryBuilder.query;
  */
 public class UidObjectDefinition implements LdapObjectDefinition {
     /**
-     * The objectClass to filter by when searching for primary keys.
-     * The "person" objectClass would be a typical example.
+     * The objectClass to filter by when searching for primary keys. The
+     * "person" objectClass would be a typical example.
      */
     private String objectClass;
 
@@ -64,12 +64,18 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private String[] appendOnlyAttributeNames;
 
     /**
-     * An array of attribute names indicating attributes that should
-     * only be inserted and should be left alone during updates.  'dn' may be
+     * An array of attribute names indicating attributes that should only be
+     * inserted and should be left alone during updates.  'dn' may be
      * included, which is a special case that will disable renaming the
      * object.
      */
     private String[] insertOnlyAttributeNames;
+
+    /**
+     * An array of attribute names indicating attributes that should only be
+     * updated and should be left out during inserts.
+     */
+    private String[] updateOnlyAttributeNames;
 
     public UidObjectDefinition() {
     }
@@ -79,13 +85,15 @@ public class UidObjectDefinition implements LdapObjectDefinition {
             boolean keepExistingAttributesWhenUpdating,
             boolean removeDuplicatePrimaryKeys,
             String[] appendOnlyAttributeNames,
-            String[] insertOnlyAttributeNames
+            String[] insertOnlyAttributeNames,
+            String[] updateOnlyAttributeNames
     ) {
         this.objectClass = objectClass;
         this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
         this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
         this.insertOnlyAttributeNames = insertOnlyAttributeNames;
+        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
     }
 
     /**
@@ -277,5 +285,24 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setInsertOnlyAttributeNames(String[] insertOnlyAttributeNames) {
         this.insertOnlyAttributeNames = insertOnlyAttributeNames;
+    }
+
+    /**
+     * @return An array of attribute names indicating attributes that should
+     * only be updated and should be left out during inserts.
+     */
+    @Override
+    public String[] getUpdateOnlyAttributeNames() {
+        return updateOnlyAttributeNames;
+    }
+
+    /**
+     * @param updateOnlyAttributeNames An array of attribute names indicating
+     *                                 attributes that should only be updated
+     *                                 and should be left out during
+     *                                 inserts.
+     */
+    public void setUpdateOnlyAttributeNames(String[] updateOnlyAttributeNames) {
+        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
     }
 }

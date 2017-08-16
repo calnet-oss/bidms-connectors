@@ -124,4 +124,10 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * object.
      */
     String[] getInsertOnlyAttributeNames();
+
+    /**
+     * @return An array of attribute names indicating attributes that should
+     * only be updated and should be left out during inserts.
+     */
+    String[] getUpdateOnlyAttributeNames();
 }
