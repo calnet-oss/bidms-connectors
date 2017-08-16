@@ -30,8 +30,19 @@ package edu.berkeley.bidms.connector.ldap
 import edu.berkeley.bidms.connector.CallbackContext
 import edu.berkeley.bidms.connector.Connector
 import edu.berkeley.bidms.connector.ObjectDefinition
-import edu.berkeley.bidms.connector.ldap.event.*
-import edu.berkeley.bidms.connector.ldap.event.message.*
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapUniqueIdentifierEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
+import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
@@ -41,7 +52,11 @@ import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
 
 import javax.naming.Name
-import javax.naming.directory.*
+import javax.naming.directory.Attribute
+import javax.naming.directory.Attributes
+import javax.naming.directory.BasicAttribute
+import javax.naming.directory.BasicAttributes
+import javax.naming.directory.ModificationItem
 
 /**
  * Connector for LDAP and Active Directory directory servers.
@@ -553,13 +568,24 @@ class LdapConnector implements Connector {
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> convertedNewAttributeMap = null
+        Map<String, Object> convertedUpdateOnlyAttributeMap = (objectDef.updateOnlyAttributeNames ? [:] : null)
         Object directoryUniqueIdentifier = null
         try {
+            convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
+
+            // Remove update-only attributes from the map, since we're about
+            // to insert.
+            objectDef.updateOnlyAttributeNames?.each {
+                if (convertedNewAttributeMap.containsKey(it)) {
+                    convertedUpdateOnlyAttributeMap[it] = convertedNewAttributeMap[it]
+                    convertedNewAttributeMap.remove(it)
+                }
+            }
+
             // Spring method naming is a little confusing.  Spring uses the
             // word "bind" and "rebind" to mean "create" and "update." In
             // this context, it does not mean "authenticate (bind) to the
             // directory server.
-            convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
             ldapTemplate.bind(buildDnName(dn), null, buildAttributes(convertedNewAttributeMap))
 
             if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
@@ -599,6 +625,17 @@ class LdapConnector implements Connector {
                         globallyUniqueIdentifier: directoryUniqueIdentifier
                 ))
             }
+        }
+
+        if (convertedUpdateOnlyAttributeMap) {
+            // Since there are update-only attributes, we do a subsequent
+            // update after the insert.
+            convertedUpdateOnlyAttributeMap.dn = dn
+            convertedUpdateOnlyAttributeMap[objectDef.primaryKeyAttributeName] = convertedNewAttributeMap[objectDef.primaryKeyAttributeName]
+            if (directoryUniqueIdentifier) {
+                convertedUpdateOnlyAttributeMap[objectDef.globallyUniqueIdentifierAttributeName] = directoryUniqueIdentifier
+            }
+            persist(eventId, objectDef, context, convertedUpdateOnlyAttributeMap, false)
         }
     }
 
