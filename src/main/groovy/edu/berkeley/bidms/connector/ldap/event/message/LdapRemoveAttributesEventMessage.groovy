@@ -25,16 +25,36 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event.message
+
+import edu.berkeley.bidms.connector.ldap.FoundObjectMethod
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
+
+import javax.naming.directory.ModificationItem
 
 /**
- * Event type enum.
+ * Remove attributes messages sent to callbacks.
  */
-enum LdapEventType {
-    DELETE_EVENT,
-    INSERT_EVENT,
-    RENAME_EVENT,
-    UPDATE_EVENT,
-    UNIQUE_IDENTIFIER_EVENT,
-    REMOVE_ATTRIBUTES_EVENT
+@ToString(includeNames = true, excludes = "modificationItems")
+@EqualsAndHashCode(excludes = "modificationItems")
+class LdapRemoveAttributesEventMessage implements LdapEventMessage {
+    LdapEventType getEventType() {
+        return LdapEventType.REMOVE_ATTRIBUTES_EVENT
+    }
+
+    boolean success
+    String eventId
+    LdapObjectDefinition objectDef
+    LdapCallbackContext context
+    FoundObjectMethod foundMethod
+    String pkey
+    String[] removedAttributeNames
+    String dn
+    ModificationItem[] modificationItems
+    Throwable exception
 }
