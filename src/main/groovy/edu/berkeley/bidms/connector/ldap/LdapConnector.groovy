@@ -34,12 +34,14 @@ import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapRemoveAttributesEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUniqueIdentifierEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapRemoveAttributesEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
@@ -56,6 +58,7 @@ import javax.naming.directory.Attribute
 import javax.naming.directory.Attributes
 import javax.naming.directory.BasicAttribute
 import javax.naming.directory.BasicAttributes
+import javax.naming.directory.DirContext
 import javax.naming.directory.ModificationItem
 
 /**
@@ -105,6 +108,11 @@ class LdapConnector implements Connector {
      * unique identifier.
      */
     List<LdapUniqueIdentifierEventCallback> uniqueIdentifierEventCallbacks = []
+
+    /**
+     * Callbacks to be called when removeAttributes() is called.
+     */
+    List<LdapRemoveAttributesEventCallback> removeAttributesEventCallbacks = []
 
     /**
      * For queuing up asynchronous callback messages
@@ -167,6 +175,9 @@ class LdapConnector implements Connector {
                 break
             case LdapEventType.UNIQUE_IDENTIFIER_EVENT:
                 uniqueIdentifierEventCallbacks?.each { it.receive((LdapUniqueIdentifierEventMessage) eventMessage) }
+                break
+            case LdapEventType.REMOVE_ATTRIBUTES_EVENT:
+                removeAttributesEventCallbacks?.each { it.receive((LdapRemoveAttributesEventMessage) eventMessage) }
                 break
             default:
                 throw new RuntimeException("Unknown LdapEventType for event message: ${eventMessage.eventType}")
@@ -639,6 +650,101 @@ class LdapConnector implements Connector {
         }
     }
 
+    static class MatchingEntryResult {
+        DirContextAdapter entry
+        FoundObjectMethod foundObjectMethod
+        List<DirContextAdapter> searchResults
+    }
+
+    MatchingEntryResult findMatchingEntry(
+            String eventId,
+            ObjectDefinition objectDef,
+            CallbackContext context,
+            String dn,
+            String pkey,
+            Object uniqueIdentifier
+    ) {
+        MatchingEntryResult result = new MatchingEntryResult()
+
+        //
+        // There's only supposed to be one entry-per-pkey in the
+        // directory, but this is not guaranteed to always be the case.
+        // If isRemoveDuplicatePrimaryKeys() returns true, pick one to
+        // use according to our resolution algorithm and delete the
+        // rest.  It's also possible the DN exists with a different
+        // primary key.  In that case, use that object, but the primary
+        // key will be updated.
+        //
+
+        // See if records belonging to the pkey exist.
+        // This will return null if objectDef.getLdapQueryForPrimaryKey()
+        // returns null, indicating search-by-primary-key is disabled.
+        result.searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
+
+        if (!result.entry && dn) {
+            // Find entries with matching dn.  searchResults only
+            // contains entries with matching pkey.
+            result.entry = result.searchResults?.find { DirContextAdapter entry ->
+                entry.dn.toString() == dn
+            }
+            if (result.entry) {
+                result.foundObjectMethod = FoundObjectMethod.BY_DN_MATCHED_KEY
+            }
+        }
+
+        // If none of the entries match DN but there's one value in
+        // searchResults, use that.  If a dn was specified, this means
+        // the DN has changed, but the object was found by pkey.
+        if (!result.entry && result.searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(result.searchResults.first().dn.toString())) {
+            result.entry = result.searchResults.first()
+            result.foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
+        }
+
+        // If none of the entries match DN but there's more than one
+        // value in searchResults, the objects in the searchResults
+        // could be a match against the globally unique identifier,
+        // which we want to prioritize over the others.  If there's a
+        // match against a key and a dn was specified, this means the DN
+        // has changed.
+        if (!result.entry && result.searchResults?.size()) {
+            if (uniqueIdentifier) {
+                result.entry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, uniqueIdentifier)
+            }
+            if (result.entry) {
+                // match found against the globally unique identifier
+                result.foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
+            } else {
+                // If none of the entires match DN or unique identifier
+                // but there are more than one value in searchResults,
+                // that means there are multiple entries in the
+                // directory with the same pkey, none of them matching
+                // our DN or unique identifier.  Just pick the first one
+                // found that matches our DN acceptance criteria.
+                result.entry = result.searchResults.find { DirContextAdapter entry ->
+                    ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
+                }
+                if (result.entry) {
+                    result.foundObjectMethod = FoundObjectMethod.BY_FIRST_FOUND
+                }
+            }
+        }
+
+        // DN may still exist but with a different primary key
+        if (!result.entry && dn) {
+            try {
+                result.entry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
+            }
+            catch (NameNotFoundException ignored) {
+                // no-op
+            }
+            if (result.entry) {
+                result.foundObjectMethod = FoundObjectMethod.BY_DN_MISMATCHED_KEYS
+            }
+        }
+
+        return result
+    }
+
     /**
      * Insert, update or delete (persist) an object in the directory.
      *
@@ -776,87 +882,14 @@ class LdapConnector implements Connector {
         boolean wasRenamed = false
 
         if (!isDelete) {
-            //
-            // There's only supposed to be one entry-per-pkey in the
-            // directory, but this is not guaranteed to always be the case. 
-            // If isRemoveDuplicatePrimaryKeys() returns true, pick one to
-            // use according to our resolution algorithm and delete the
-            // rest.  It's also possible the DN exists with a different
-            // primary key.  In that case, use that object, but the primary
-            // key will be updated.
-            //
-
-            // See if records belonging to the pkey exist.
-            // This will return null if objectDef.getLdapQueryForPrimaryKey()
-            // returns null, indicating search-by-primary-key is disabled.
-            List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
-
-            DirContextAdapter existingEntry = null
-            FoundObjectMethod foundObjectMethod = null
-
-            if (!existingEntry && dn) {
-                // Find entries with matching dn.  searchResults only
-                // contains entries with matching pkey.
-                existingEntry = searchResults?.find { DirContextAdapter entry ->
-                    entry.dn.toString() == dn
-                }
-                if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_DN_MATCHED_KEY
-                }
-            }
-            // If none of the entries match DN but there's one value in
-            // searchResults, use that.  If a dn was specified, this means
-            // the DN has changed, but the object was found by pkey.
-            if (!existingEntry && searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(searchResults.first().dn.toString())) {
-                existingEntry = searchResults.first()
-                foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
-            }
-            // If none of the entries match DN but there's more than one
-            // value in searchResults, the objects in the searchResults
-            // could be a match against the globally unique identifier,
-            // which we want to prioritize over the others.  If there's a
-            // match against a key and a dn was specified, this means the DN
-            // has changed.
-            if (!existingEntry && searchResults?.size()) {
-                if (uniqueIdentifier) {
-                    existingEntry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, uniqueIdentifier)
-                }
-                if (existingEntry) {
-                    // match found against the globally unique identifier
-                    foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
-                } else {
-                    // If none of the entires match DN or unique identifier
-                    // but there are more than one value in searchResults,
-                    // that means there are multiple entries in the
-                    // directory with the same pkey, none of them matching
-                    // our DN or unique identifier.  Just pick the first one
-                    // found that matches our DN acceptance criteria.
-                    existingEntry = searchResults.find { DirContextAdapter entry ->
-                        ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
-                    }
-                    if (existingEntry) {
-                        foundObjectMethod = FoundObjectMethod.BY_FIRST_FOUND
-                    }
-                }
-            }
-
-            // DN may still exist but with a different primary key
-            if (!existingEntry && dn) {
-                try {
-                    existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
-                }
-                catch (NameNotFoundException ignored) {
-                    // no-op
-                }
-                if (existingEntry) {
-                    foundObjectMethod = FoundObjectMethod.BY_DN_MISMATCHED_KEYS
-                }
-            }
+            MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, pkey, uniqueIdentifier)
+            DirContextAdapter existingEntry = matchingEntryResult.entry
+            FoundObjectMethod foundObjectMethod = matchingEntryResult.foundObjectMethod
 
             if (((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
                 // Delete all the entries that we're not keeping as the
                 // existingEntry
-                searchResults.each { DirContextAdapter entry ->
+                matchingEntryResult.searchResults.each { DirContextAdapter entry ->
                     if (entry.dn != existingEntry?.dn) {
                         delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn.toString())
                         isModified = true
@@ -1125,6 +1158,86 @@ class LdapConnector implements Connector {
             }
         } else {
             throw new LdapConnectorException("objectDef has no globallyUniqueIdentifierAttributeName set")
+        }
+    }
+
+    /**
+     * Remove attributes from an existing directory entry.  A
+     * LdapConnectorException is possibly thrown, due to a server-side
+     * error, if you attempt to remove an attribute that doesn't exist for
+     * the entry.  This behavior is dependent on the directory server
+     * implementation.  ApacheDS is confirmed to error out in this
+     * situation.  OpenDJ behavior is not confirmed.
+     *
+     * @param eventId Event id
+     * @param objectDef Object definition
+     * @param context Callback context
+     * @param dn (optional) DN of the object to modify
+     * @param primaryKeyAttrValue Primary key attribute value of the object to modify
+     * @param globallyUniqueIdentifierAttrValue (optional) Globally unique identifier value of the object to modify
+     * @param attributeNamesToRemove A string array of attribute names to remove
+     * @return true if an update actually occured in the directory.  false
+     *         may be returned if the object is unchanged or not found.
+     * @throws LdapConnectorException If an error occurs
+     */
+    boolean removeAttributes(
+            String eventId,
+            ObjectDefinition objectDef,
+            CallbackContext context,
+            String dn,
+            String primaryKeyAttrValue,
+            Object globallyUniqueIdentifierAttrValue,
+            String[] attributeNamesToRemove
+    ) throws LdapConnectorException {
+        MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+
+        if (matchingEntryResult?.entry) {
+            if (!matchingEntryResult.entry.updateMode) {
+                matchingEntryResult.entry.updateMode = true
+            }
+
+            Throwable exception
+            List modificationItems = []
+            try {
+                // Spring LDAP doesn't support removing write-only
+                // attributes (like userPassword) so that's why we use
+                // DirContext directly here.
+                DirContext dirctx = ldapTemplate.contextSource.readWriteContext
+                try {
+                    attributeNamesToRemove.each { String attrNameToRemove ->
+                        ModificationItem item = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(attrNameToRemove, null))
+                        modificationItems << item
+                        dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
+                    }
+                }
+                finally {
+                    dirctx.close()
+                }
+
+                boolean isModified = modificationItems?.size()
+
+                return isModified
+            }
+            catch (Throwable t) {
+                exception = t
+                throw new LdapConnectorException(t)
+            }
+            finally {
+                deliverCallbackMessage(new LdapRemoveAttributesEventMessage(
+                        success: exception == null,
+                        eventId: eventId,
+                        objectDef: (LdapObjectDefinition) objectDef,
+                        context: (LdapCallbackContext) context,
+                        foundMethod: matchingEntryResult.foundObjectMethod,
+                        pkey: primaryKeyAttrValue,
+                        removedAttributeNames: attributeNamesToRemove,
+                        dn: dn,
+                        modificationItems: modificationItems,
+                        exception: exception
+                ))
+            }
+        } else {
+            return false
         }
     }
 }
