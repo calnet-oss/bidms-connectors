@@ -27,15 +27,10 @@
 
 package edu.berkeley.bidms.connector.ldap.event
 
+import edu.berkeley.bidms.connector.ldap.event.message.LdapSetAttributeEventMessage
+
 /**
- * Event type enum.
+ * Callback for set attribute events.
  */
-enum LdapEventType {
-    DELETE_EVENT,
-    INSERT_EVENT,
-    RENAME_EVENT,
-    UPDATE_EVENT,
-    UNIQUE_IDENTIFIER_EVENT,
-    REMOVE_ATTRIBUTES_EVENT,
-    SET_ATTRIBUTE_EVENT
+interface LdapSetAttributeEventCallback extends LdapEventCallback<LdapSetAttributeEventMessage> {
 }

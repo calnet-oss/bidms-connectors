@@ -36,6 +36,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRemoveAttributesEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapSetAttributeEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUniqueIdentifierEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
@@ -43,6 +44,7 @@ import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRemoveAttributesEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapSetAttributeEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
 import groovy.util.logging.Slf4j
@@ -115,6 +117,11 @@ class LdapConnector implements Connector {
     List<LdapRemoveAttributesEventCallback> removeAttributesEventCallbacks = []
 
     /**
+     * Callbacks to be called when setAttribute() is called.
+     */
+    List<LdapSetAttributeEventCallback> setAttributeEventCallbacks = []
+
+    /**
      * For queuing up asynchronous callback messages
      */
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
@@ -178,6 +185,9 @@ class LdapConnector implements Connector {
                 break
             case LdapEventType.REMOVE_ATTRIBUTES_EVENT:
                 removeAttributesEventCallbacks?.each { it.receive((LdapRemoveAttributesEventMessage) eventMessage) }
+                break
+            case LdapEventType.SET_ATTRIBUTE_EVENT:
+                setAttributeEventCallbacks?.each { it.receive((LdapSetAttributeEventMessage) eventMessage) }
                 break
             default:
                 throw new RuntimeException("Unknown LdapEventType for event message: ${eventMessage.eventType}")
@@ -1169,6 +1179,8 @@ class LdapConnector implements Connector {
      * implementation.  ApacheDS is confirmed to error out in this
      * situation.  OpenDJ behavior is not confirmed.
      *
+     * It's possible to use persist() to remove attributes by setting the attribute value to a null, but it doesn't work for "write-only" attributes (e.g., userPassword).  This method supports "write-only" attributes.
+     *
      * @param eventId Event id
      * @param objectDef Object definition
      * @param context Callback context
@@ -1233,6 +1245,71 @@ class LdapConnector implements Connector {
                         removedAttributeNames: attributeNamesToRemove,
                         dn: dn,
                         modificationItems: modificationItems,
+                        exception: exception
+                ))
+            }
+        } else {
+            return false
+        }
+    }
+
+    /**
+     * Set an attribute for an existing directory entry.
+     *
+     * Normally persist() is used to add or modify attribute values, but
+     * persist() doesn't work when trying to modify a "write-only" attribute
+     * (e.g., userPassword).  This method supports "write-only" attributes.
+     */
+    boolean setAttribute(
+            String eventId,
+            ObjectDefinition objectDef,
+            CallbackContext context,
+            String dn,
+            String primaryKeyAttrValue,
+            Object globallyUniqueIdentifierAttrValue,
+            String attributeName,
+            Object attributeValue
+    ) throws LdapConnectorException {
+        MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+
+        if (matchingEntryResult?.entry) {
+            if (!matchingEntryResult.entry.updateMode) {
+                matchingEntryResult.entry.updateMode = true
+            }
+
+            Throwable exception
+            ModificationItem item = null
+            try {
+                // Spring LDAP doesn't support write-only attributes (like
+                // userPassword) so that's why we use DirContext directly
+                // here.
+                DirContext dirctx = ldapTemplate.contextSource.readWriteContext
+                try {
+                    item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, attributeValue))
+                    dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
+                }
+                finally {
+                    dirctx.close()
+                }
+
+                return true
+            }
+            catch (Throwable t) {
+                exception = t
+                throw new LdapConnectorException(t)
+            }
+            finally {
+                deliverCallbackMessage(new LdapSetAttributeEventMessage(
+                        success: exception == null,
+                        eventId: eventId,
+                        objectDef: (LdapObjectDefinition) objectDef,
+                        context: (LdapCallbackContext) context,
+                        foundMethod: matchingEntryResult.foundObjectMethod,
+                        pkey: primaryKeyAttrValue,
+                        attributeName: attributeName,
+                        attributeValue: attributeValue,
+                        dn: dn,
+                        modificationItems: [item],
                         exception: exception
                 ))
             }
