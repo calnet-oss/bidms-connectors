@@ -32,6 +32,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRemoveAttributesEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapSetAttributeEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUniqueIdentifierEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
@@ -69,6 +70,7 @@ class LdapConnectorSpec extends Specification {
     LdapDeleteEventCallback deleteEventCallback = Mock(LdapDeleteEventCallback)
     LdapUniqueIdentifierEventCallback uniqueIdentifierEventCallback = Mock(LdapUniqueIdentifierEventCallback)
     LdapRemoveAttributesEventCallback removeAttributesEventCallback = Mock(LdapRemoveAttributesEventCallback)
+    LdapSetAttributeEventCallback setAttributeEventCallback = Mock(LdapSetAttributeEventCallback)
 
     LdapConnector ldapConnector = new LdapConnector(
             isSynchronousCallback: true,
@@ -77,7 +79,8 @@ class LdapConnectorSpec extends Specification {
             renameEventCallbacks: [renameEventCallback],
             deleteEventCallbacks: [deleteEventCallback],
             uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback],
-            removeAttributesEventCallbacks: [removeAttributesEventCallback]
+            removeAttributesEventCallbacks: [removeAttributesEventCallback],
+            setAttributeEventCallbacks: [setAttributeEventCallback]
     )
 
     void setupSpec() {
@@ -943,5 +946,48 @@ class LdapConnectorSpec extends Specification {
         !retrieved.first().userPassword
         1 * insertEventCallback.receive(_)
         1 * removeAttributesEventCallback.receive(_)
+    }
+
+    void "test setAttribute()"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        addOu("people")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: objectClasses,
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"
+        ], false)
+
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+        assert retrieved.first().description == "initial test"
+
+        boolean wasModified1 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
+        boolean wasModified2 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "userPassword", "foobar")
+        boolean wasModified3 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "userPassword", "foobar2")
+        retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didCreate
+        wasModified1
+        wasModified2
+        wasModified3
+        retrieved.size() == 1
+        retrieved.first().description == "updated"
+        retrieved.first().userPassword
+        1 * insertEventCallback.receive(_)
+        3 * setAttributeEventCallback.receive(_)
     }
 }
