@@ -27,6 +27,7 @@
 
 package edu.berkeley.bidms.connector.ldap
 
+import edu.berkeley.bidms.connector.ConnectorObjectNotFoundException
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
@@ -948,6 +949,26 @@ class LdapConnectorSpec extends Specification {
         1 * removeAttributesEventCallback.receive(_)
     }
 
+    void "test attempted attribute removal on a nonexistent object"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        String eventId = "eventId"
+        String uid = "bogus"
+        String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        LdapConnectorException exception = null
+        try {
+            ldapConnector.removeAttributes(eventId, objDef, null, dn, uid, null, ["description"] as String[])
+        }
+        catch (LdapConnectorException e) {
+            exception = e
+        }
+
+        then:
+        exception.cause instanceof ConnectorObjectNotFoundException
+    }
+
     void "test setAttribute()"() {
         given:
         UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
@@ -989,5 +1010,25 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().userPassword
         1 * insertEventCallback.receive(_)
         3 * setAttributeEventCallback.receive(_)
+    }
+
+    void "test attempted setAttribute() on a nonexistent object"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        String eventId = "eventId"
+        String uid = "bogus"
+        String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        LdapConnectorException exception = null
+        try {
+           ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
+        }
+        catch (LdapConnectorException e) {
+            exception = e
+        }
+
+        then:
+        exception.cause instanceof ConnectorObjectNotFoundException
     }
 }
