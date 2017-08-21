@@ -29,6 +29,7 @@ package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.CallbackContext
 import edu.berkeley.bidms.connector.Connector
+import edu.berkeley.bidms.connector.ConnectorObjectNotFoundException
 import edu.berkeley.bidms.connector.ObjectDefinition
 import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
@@ -1202,54 +1203,53 @@ class LdapConnector implements Connector {
             String[] attributeNamesToRemove
     ) throws LdapConnectorException {
         MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        if (!matchingEntryResult?.entry) {
+            throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
+        }
 
-        if (matchingEntryResult?.entry) {
-            if (!matchingEntryResult.entry.updateMode) {
-                matchingEntryResult.entry.updateMode = true
-            }
+        if (!matchingEntryResult.entry.updateMode) {
+            matchingEntryResult.entry.updateMode = true
+        }
 
-            Throwable exception
-            List modificationItems = []
+        Throwable exception
+        List modificationItems = []
+        try {
+            // Spring LDAP doesn't support removing write-only
+            // attributes (like userPassword) so that's why we use
+            // DirContext directly here.
+            DirContext dirctx = ldapTemplate.contextSource.readWriteContext
             try {
-                // Spring LDAP doesn't support removing write-only
-                // attributes (like userPassword) so that's why we use
-                // DirContext directly here.
-                DirContext dirctx = ldapTemplate.contextSource.readWriteContext
-                try {
-                    attributeNamesToRemove.each { String attrNameToRemove ->
-                        ModificationItem item = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(attrNameToRemove, null))
-                        modificationItems << item
-                        dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
-                    }
+                attributeNamesToRemove.each { String attrNameToRemove ->
+                    ModificationItem item = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(attrNameToRemove, null))
+                    modificationItems << item
+                    dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
                 }
-                finally {
-                    dirctx.close()
-                }
-
-                boolean isModified = modificationItems?.size()
-
-                return isModified
-            }
-            catch (Throwable t) {
-                exception = t
-                throw new LdapConnectorException(t)
             }
             finally {
-                deliverCallbackMessage(new LdapRemoveAttributesEventMessage(
-                        success: exception == null,
-                        eventId: eventId,
-                        objectDef: (LdapObjectDefinition) objectDef,
-                        context: (LdapCallbackContext) context,
-                        foundMethod: matchingEntryResult.foundObjectMethod,
-                        pkey: primaryKeyAttrValue,
-                        removedAttributeNames: attributeNamesToRemove,
-                        dn: dn,
-                        modificationItems: modificationItems,
-                        exception: exception
-                ))
+                dirctx.close()
             }
-        } else {
-            return false
+
+            boolean isModified = modificationItems?.size()
+
+            return isModified
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            deliverCallbackMessage(new LdapRemoveAttributesEventMessage(
+                    success: exception == null,
+                    eventId: eventId,
+                    objectDef: (LdapObjectDefinition) objectDef,
+                    context: (LdapCallbackContext) context,
+                    foundMethod: matchingEntryResult.foundObjectMethod,
+                    pkey: primaryKeyAttrValue,
+                    removedAttributeNames: attributeNamesToRemove,
+                    dn: dn,
+                    modificationItems: modificationItems,
+                    exception: exception
+            ))
         }
     }
 
@@ -1271,50 +1271,49 @@ class LdapConnector implements Connector {
             Object attributeValue
     ) throws LdapConnectorException {
         MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        if (!matchingEntryResult?.entry) {
+            throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
+        }
 
-        if (matchingEntryResult?.entry) {
-            if (!matchingEntryResult.entry.updateMode) {
-                matchingEntryResult.entry.updateMode = true
-            }
+        if (!matchingEntryResult.entry.updateMode) {
+            matchingEntryResult.entry.updateMode = true
+        }
 
-            Throwable exception
-            ModificationItem item = null
+        Throwable exception
+        ModificationItem item = null
+        try {
+            // Spring LDAP doesn't support write-only attributes (like
+            // userPassword) so that's why we use DirContext directly
+            // here.
+            DirContext dirctx = ldapTemplate.contextSource.readWriteContext
             try {
-                // Spring LDAP doesn't support write-only attributes (like
-                // userPassword) so that's why we use DirContext directly
-                // here.
-                DirContext dirctx = ldapTemplate.contextSource.readWriteContext
-                try {
-                    item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, attributeValue))
-                    dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
-                }
-                finally {
-                    dirctx.close()
-                }
-
-                return true
-            }
-            catch (Throwable t) {
-                exception = t
-                throw new LdapConnectorException(t)
+                item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, attributeValue))
+                dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
             }
             finally {
-                deliverCallbackMessage(new LdapSetAttributeEventMessage(
-                        success: exception == null,
-                        eventId: eventId,
-                        objectDef: (LdapObjectDefinition) objectDef,
-                        context: (LdapCallbackContext) context,
-                        foundMethod: matchingEntryResult.foundObjectMethod,
-                        pkey: primaryKeyAttrValue,
-                        attributeName: attributeName,
-                        attributeValue: attributeValue,
-                        dn: dn,
-                        modificationItems: [item],
-                        exception: exception
-                ))
+                dirctx.close()
             }
-        } else {
-            return false
+
+            return true
+        }
+        catch (Throwable t) {
+            exception = t
+            throw new LdapConnectorException(t)
+        }
+        finally {
+            deliverCallbackMessage(new LdapSetAttributeEventMessage(
+                    success: exception == null,
+                    eventId: eventId,
+                    objectDef: (LdapObjectDefinition) objectDef,
+                    context: (LdapCallbackContext) context,
+                    foundMethod: matchingEntryResult.foundObjectMethod,
+                    pkey: primaryKeyAttrValue,
+                    attributeName: attributeName,
+                    attributeValue: attributeValue,
+                    dn: dn,
+                    modificationItems: [item],
+                    exception: exception
+            ))
         }
     }
 }
