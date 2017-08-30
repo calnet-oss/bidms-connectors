@@ -64,20 +64,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private String[] appendOnlyAttributeNames;
 
     /**
-     * An array of attribute names indicating attributes that should only be
-     * inserted and should be left alone during updates.  'dn' may be
-     * included, which is a special case that will disable renaming the
-     * object.
-     */
-    private String[] insertOnlyAttributeNames;
-
-    /**
-     * An array of attribute names indicating attributes that should only be
-     * updated and should be left out during inserts.
-     */
-    private String[] updateOnlyAttributeNames;
-
-    /**
      * An array of attribute names indicating attributes that are only set if
      * a condition indicator is present in the conditional indicator
      * collection created by a conditional callback that's configured for the
@@ -92,6 +78,9 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      * present, it's not set.  <i>ONCREATE</i> and <i>ONUPDATE</i> are
      * pre-set global conditions depending on whether the downstream entry
      * exists or not at time of persistence.
+     * <p/>
+     * 'dn.ONCREATE' may be included, which is a special case that will
+     * disable renaming the object.
      */
     private String[] conditionalAttributeNames;
 
@@ -262,47 +251,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
         this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-    }
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be inserted and should be left alone during updates.  'dn' may be
-     * included, which is a special case that will disable renaming the
-     * object.
-     */
-    public String[] getInsertOnlyAttributeNames() {
-        return insertOnlyAttributeNames;
-    }
-
-    /**
-     * @param insertOnlyAttributeNames An array of attribute names indicating
-     *                                 attributes that should only be
-     *                                 inserted and should be left alone
-     *                                 during updates.  'dn' may be included,
-     *                                 which is a special case that will
-     *                                 disable renaming the object.
-     */
-    public void setInsertOnlyAttributeNames(String[] insertOnlyAttributeNames) {
-        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
-    }
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be updated and should be left out during inserts.
-     */
-    @Override
-    public String[] getUpdateOnlyAttributeNames() {
-        return updateOnlyAttributeNames;
-    }
-
-    /**
-     * @param updateOnlyAttributeNames An array of attribute names indicating
-     *                                 attributes that should only be updated
-     *                                 and should be left out during
-     *                                 inserts.
-     */
-    public void setUpdateOnlyAttributeNames(String[] updateOnlyAttributeNames) {
-        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
     }
 
     /**

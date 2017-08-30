@@ -584,9 +584,13 @@ class LdapConnector implements Connector {
      * @param dn Distinguished name of object being created
      * @param attributeMap Attributes for the object where the keys in the
      *        map are attribute names.
+     * @returns The just-inserted globally unique identifier, if it could be
+     *          determined.  It's not guaranteed this will always return
+     *          non-null on a successful insert.  In other words, null does
+     *          not indicate a failed insert.
      * @throws LdapConnectorException If an error occurs
      */
-    void insert(
+    Object insert(
             String eventId,
             LdapObjectDefinition objectDef,
             LdapCallbackContext context,
@@ -596,19 +600,9 @@ class LdapConnector implements Connector {
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> convertedNewAttributeMap = null
-        Map<String, Object> convertedUpdateOnlyAttributeMap = (objectDef.updateOnlyAttributeNames ? [:] : null)
         Object directoryUniqueIdentifier = null
         try {
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
-
-            // Remove update-only attributes from the map, since we're about
-            // to insert.
-            objectDef.updateOnlyAttributeNames?.each {
-                if (convertedNewAttributeMap.containsKey(it)) {
-                    convertedUpdateOnlyAttributeMap[it] = convertedNewAttributeMap[it]
-                    convertedNewAttributeMap.remove(it)
-                }
-            }
 
             // Spring method naming is a little confusing.  Spring uses the
             // word "bind" and "rebind" to mean "create" and "update." In
@@ -623,7 +617,9 @@ class LdapConnector implements Connector {
                 if (!directoryUniqueIdentifier) {
                     log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just inserted entry of $dn")
                 }
+                return directoryUniqueIdentifier
             }
+            return null
         }
         catch (Throwable t) {
             exception = t
@@ -653,17 +649,6 @@ class LdapConnector implements Connector {
                         globallyUniqueIdentifier: directoryUniqueIdentifier
                 ))
             }
-        }
-
-        if (convertedUpdateOnlyAttributeMap) {
-            // Since there are update-only attributes, we do a subsequent
-            // update after the insert.
-            convertedUpdateOnlyAttributeMap.dn = dn
-            convertedUpdateOnlyAttributeMap[objectDef.primaryKeyAttributeName] = convertedNewAttributeMap[objectDef.primaryKeyAttributeName]
-            if (directoryUniqueIdentifier) {
-                convertedUpdateOnlyAttributeMap[objectDef.globallyUniqueIdentifierAttributeName] = directoryUniqueIdentifier
-            }
-            persist(eventId, objectDef, context, convertedUpdateOnlyAttributeMap, false)
         }
     }
 
@@ -891,9 +876,31 @@ class LdapConnector implements Connector {
         }
 
         // (optional) DN
-        String dn = attrMapCopy.dn
-        // Remove the dn from the object -- not an actual attribute
-        attrMapCopy.remove("dn")
+        String dnNotConditional = attrMapCopy.dn
+        if (dnNotConditional != null) {
+            // Remove the dn from the object -- not an actual attribute
+            attrMapCopy.remove("dn")
+        }
+
+        String dnOnCreate = attrMapCopy["dn.ONCREATE"]
+        if (dnOnCreate != null) {
+            attrMapCopy.remove("dn.ONCREATE")
+        }
+
+        String dnOnUpdate = attrMapCopy["dn.ONUPDATE"]
+        if (dnOnUpdate != null) {
+            attrMapCopy.remove("dn.ONUPDATE")
+        }
+
+        if (dnOnCreate && dnOnUpdate) {
+            throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE is allowed: provide only one of these")
+        }
+        String conditionalDn = dnOnUpdate ?: dnOnCreate
+
+        if (dnNotConditional && conditionalDn) {
+            throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE or dn is allowed: provide only one of these")
+        }
+        String dn = conditionalDn ?: dnNotConditional
 
         boolean isModified = false
         boolean wasRenamed = false
@@ -914,7 +921,8 @@ class LdapConnector implements Connector {
                 }
             }
 
-            boolean renamingEnabled = !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains("dn")
+            // renaming is only disabled when neither dn.ONUPDATE nor dn exists in the attribute map.
+            boolean renamingEnabled = dnOnUpdate || dnNotConditional
 
             // Deal with conditional attributes.
             // Add pre-set global ONCREATE or ONUPDATE depending on whether there's an existing entry or not.
@@ -982,9 +990,7 @@ class LdapConnector implements Connector {
                     wasRenamed = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>((Map<String, Object>) attrMapCopy.findAll {
-                    !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains(it.key)
-                })
+                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
                 Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
                 ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
                     if (newReplaceAttributeMap.containsKey(attrName)) {
@@ -1062,8 +1068,19 @@ class LdapConnector implements Connector {
                 if (!dn) {
                     throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
                 }
-                insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
+                Object insertedGloballyUniqId = insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
                 isModified = true
+
+                boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).conditionalAttributeNames.any { it.endsWith(".ONUPDATE") }
+                if (hasUpdateOnlyAttributes) {
+                    // Since there are update-only attributes, we do a subsequent
+                    // update after the insert.
+                    LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
+                    if (insertedGloballyUniqId) {
+                        attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
+                    }
+                    persist(eventId, objectDef, context, attrMapForUpdate, false)
+                }
             }
         } else {
             // is a deletion for the DN and/or pkey

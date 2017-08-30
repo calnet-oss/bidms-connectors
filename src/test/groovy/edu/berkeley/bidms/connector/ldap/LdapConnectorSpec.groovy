@@ -748,7 +748,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                insertOnlyAttributeNames: ["dn"] as String[]
+                conditionalAttributeNames: ["dn.ONCREATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -761,12 +761,12 @@ class LdapConnectorSpec extends Specification {
 
         // update
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : "uid=1,ou=expired people,dc=berkeley,dc=edu", // different dn than what we created with
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "updated"
+                "dn.ONCREATE": "uid=1,ou=expired people,dc=berkeley,dc=edu", // different dn than what we created with
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                cn           : "Test User",
+                description  : "updated"
         ], false)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
@@ -782,7 +782,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().dn == "uid=1,ou=people,dc=berkeley,dc=edu" // not renamed
         retrieved.first().description == "updated"
         1 * updateEventCallback.receive(_)
-        // but a uniqueId callback was produced signalling possible globally unique identifier change
+        // but a uniqueId callback was produced signaling possible globally unique identifier change
         1 * uniqueIdentifierEventCallback.receive(_) >> { LdapUniqueIdentifierEventMessage msg ->
             assert msg.success
             assert msg.causingEvent == LdapEventType.UPDATE_EVENT
@@ -959,7 +959,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                insertOnlyAttributeNames: ["cn"] as String[]
+                conditionalAttributeNames: ["cn.ONCREATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -970,22 +970,22 @@ class LdapConnectorSpec extends Specification {
         addOu("people")
         // create
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test"
+                dn           : dn,
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                "cn.ONCREATE": "Test User",
+                description  : "initial test"
         ], false)
 
         // update
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "IGNORED", // not updated because cn in getInsertOnlyAttributeNames()
-                description: "updated"
+                dn           : dn,
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                "cn.ONCREATE": "IGNORED", // not updated because cn is insert-only
+                description  : "updated"
         ], false)
 
 
@@ -1011,7 +1011,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                updateOnlyAttributeNames: ["description"] as String[]
+                conditionalAttributeNames: ["description.ONUPDATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -1021,12 +1021,12 @@ class LdapConnectorSpec extends Specification {
         when:
         addOu("people")
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test"
+                dn                    : dn,
+                uid                   : uid,
+                objectClass           : objectClasses,
+                sn                    : "User",
+                cn                    : "Test User",
+                "description.ONUPDATE": "initial test"
         ], false)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
