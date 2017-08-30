@@ -77,25 +77,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     private String[] updateOnlyAttributeNames;
 
-    public UidObjectDefinition() {
-    }
-
-    public UidObjectDefinition(
-            String objectClass,
-            boolean keepExistingAttributesWhenUpdating,
-            boolean removeDuplicatePrimaryKeys,
-            String[] appendOnlyAttributeNames,
-            String[] insertOnlyAttributeNames,
-            String[] updateOnlyAttributeNames
-    ) {
-        this.objectClass = objectClass;
-        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
-        this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
-        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
-        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
-    }
-
     /**
      * The globally unique identifier attribute in the directory, which is
      * typically an operational attribute.

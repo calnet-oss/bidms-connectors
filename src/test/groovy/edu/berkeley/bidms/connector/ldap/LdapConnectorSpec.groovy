@@ -168,7 +168,12 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[], null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: keepExistingAttributesWhenUpdating,
+                removeDuplicatePrimaryKeys: true,
+                appendOnlyAttributeNames: appendAttrs as String[]
+        )
 
         when:
         addOu("people")
@@ -223,7 +228,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null, null, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: removeDupes
+        )
         String eventId = "eventId"
 
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
@@ -364,7 +373,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test persist return value on a non-modification"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
 
         when:
         addOu("people")
@@ -400,7 +413,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
 
         addOu("namespace")
 
@@ -471,7 +488,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test asynchronous callback"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -536,7 +557,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test deletes"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: removeDupePkeys
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -598,7 +623,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates without specifying a DN"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -633,7 +662,12 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates with renaming disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["dn"] as String[], null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                insertOnlyAttributeNames: ["dn"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -682,7 +716,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test retrieving globally unique identifier"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -719,12 +757,17 @@ class LdapConnectorSpec extends Specification {
 
     void "test persistence when retrieving-by-primary-key is disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, false, null, null, null) {
+        UidObjectDefinition objDef = new UidObjectDefinition() {
             @Override
             LdapQuery getLdapQueryForPrimaryKey(String pkey) {
                 // searching by primary key is disabled by returning null
                 return null
             }
+        }
+        objDef.with {
+            objectClass = "person"
+            keepExistingAttributesWhenUpdating = true
+            removeDuplicatePrimaryKeys = false
         }
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -777,7 +820,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test changing lists that have same values, just in a different case"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "1"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -826,7 +873,12 @@ class LdapConnectorSpec extends Specification {
 
     void "test insert-only attribute"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["cn"] as String[], null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                insertOnlyAttributeNames: ["cn"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -873,7 +925,12 @@ class LdapConnectorSpec extends Specification {
 
     void "test update-only attribute"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, ["description"] as String[])
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                updateOnlyAttributeNames: ["description"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -909,7 +966,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attribute removal"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -951,7 +1012,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attempted attribute removal on a nonexistent object"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "bogus"
         String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
@@ -971,7 +1036,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test setAttribute()"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -1014,7 +1083,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attempted setAttribute() on a nonexistent object"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "bogus"
         String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
@@ -1022,7 +1095,7 @@ class LdapConnectorSpec extends Specification {
         when:
         LdapConnectorException exception = null
         try {
-           ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
+            ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
         }
         catch (LdapConnectorException e) {
             exception = e
