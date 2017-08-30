@@ -78,6 +78,24 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private String[] updateOnlyAttributeNames;
 
     /**
+     * An array of attribute names indicating attributes that are only set if
+     * a condition indicator is present in the conditional indicator
+     * collection created by a conditional callback that's configured for the
+     * connector.
+     * <p/>
+     * The strings in this array follow naming convention for conditional
+     * attributes: <code>attributeName.condition</code> where
+     * <i>attributeName</i> is the attribute in the downstream system and
+     * <i>condition</i> is the indicator string that is possibly present in
+     * the conditional indicator collection.  If it is present in the
+     * conditional indicator collection, the attribute is set.  If it's not
+     * present, it's not set.  <i>ONCREATE</i> and <i>ONUPDATE</i> are
+     * pre-set global conditions depending on whether the downstream entry
+     * exists or not at time of persistence.
+     */
+    private String[] conditionalAttributeNames;
+
+    /**
      * The globally unique identifier attribute in the directory, which is
      * typically an operational attribute.
      * <p>
@@ -285,5 +303,29 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setUpdateOnlyAttributeNames(String[] updateOnlyAttributeNames) {
         this.updateOnlyAttributeNames = updateOnlyAttributeNames;
+    }
+
+    /**
+     * @return An array of attribute names indicating attributes that are
+     * only set if a condition indicator is present in the conditional
+     * indicator colllection created by a conditional callback that's
+     * configured for the connector.
+     */
+    @Override
+    public String[] getConditionalAttributeNames() {
+        return conditionalAttributeNames;
+    }
+
+    /**
+     * @param conditionalAttributeNames An array of attribute names
+     *                                  indicating attributes that are only
+     *                                  set if a condition indicator is
+     *                                  present in the conditional indicator
+     *                                  collection created by a conditional
+     *                                  callback that's configured for the
+     *                                  connector.
+     */
+    public void setConditionalAttributeNames(String[] conditionalAttributeNames) {
+        this.conditionalAttributeNames = conditionalAttributeNames;
     }
 }

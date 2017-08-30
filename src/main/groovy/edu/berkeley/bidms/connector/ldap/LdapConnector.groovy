@@ -123,6 +123,12 @@ class LdapConnector implements Connector {
     List<LdapSetAttributeEventCallback> setAttributeEventCallbacks = []
 
     /**
+     * Callbacks that modify the conditional indicator collection.
+     * This pairs with the conditionalAttributeNames from the ObjectDefinition.
+     */
+    List<LdapConditionalCallback> conditionalCallbacks = []
+
+    /**
      * For queuing up asynchronous callback messages
      */
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
@@ -909,6 +915,50 @@ class LdapConnector implements Connector {
             }
 
             boolean renamingEnabled = !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains("dn")
+
+            // Deal with conditional attributes.
+            // Add pre-set global ONCREATE or ONUPDATE depending on whether there's an existing entry or not.
+            HashSet<String> conditionalIndicators = [(existingEntry ? "ONUPDATE" : "ONCREATE")]
+            String[] conditionalAttributeNames = ((LdapObjectDefinition) objectDef).conditionalAttributeNames
+            if (conditionalAttributeNames) {
+                Map<String, Object> existingAttributeMap = (existingEntry ? toMapContextMapper.mapFromContext(existingEntry) : null)
+                Map<String, Object> convertedNewAttrMap = convertCallerProvidedMap(attrMapCopy)
+                // Create the conditional indicator set
+                conditionalCallbacks?.each { LdapConditionalCallback conditionalCallback ->
+                    conditionalCallback.modifyConditionalIndicators(
+                            conditionalIndicators,
+                            eventId,
+                            (LdapObjectDefinition) objectDef,
+                            (LdapCallbackContext) context,
+                            foundObjectMethod,
+                            pkey,
+                            dn,
+                            existingAttributeMap,
+                            convertedNewAttrMap
+                    )
+                }
+
+                // remove attributes that don't meet conditions or rename the ones that do
+                conditionalAttributeNames.each { String attrNameAndCondIndicator ->
+                    if (attrMapCopy.containsKey(attrNameAndCondIndicator)) {
+                        // everything before the last dot is the attribute name and everything after the last dot is the condition indicator
+                        String attributeName = attrNameAndCondIndicator.substring(0, attrNameAndCondIndicator.lastIndexOf('.'))
+                        String conditionIndicator = attrNameAndCondIndicator.substring(attributeName.length() + 1)
+
+                        // the conditional indicator list may contain "attrName.condition" or just "condition" where the latter is a global condition indicator
+                        boolean setConditionalAttribute = conditionalIndicators.contains(attrNameAndCondIndicator) || conditionalIndicators.contains(conditionIndicator)
+                        if (setConditionalAttribute) {
+                            // this attribute is to be set, so rename it in attrMap to remove the condition indicator suffix
+                            Object conditionalAttrValue = attrMapCopy[attrNameAndCondIndicator]
+                            attrMapCopy.remove(attrNameAndCondIndicator)
+                            attrMapCopy[attributeName] = conditionalAttrValue
+                        } else {
+                            // this attribute is not to be set, so remove it from attrMap
+                            attrMapCopy.remove(attrNameAndCondIndicator)
+                        }
+                    }
+                }
+            }
 
             if (existingEntry) {
                 // Already exists -- update

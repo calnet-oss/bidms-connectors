@@ -28,6 +28,7 @@
 package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.ConnectorObjectNotFoundException
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
@@ -658,6 +659,87 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         1 * updateEventCallback.receive(_)
         1 * uniqueIdentifierEventCallback.receive(_)
+    }
+
+    @Unroll("#description")
+    void "test conditional attributes"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                conditionalAttributeNames: ["description.CONDITION", "description.ONCREATE", "description.ONUPDATE"] as String[]
+        )
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when: "initialize conditions"
+        String condition = condToSet
+        LdapConditionalCallback conditionalCallback = new LdapConditionalCallback() {
+            @Override
+            void modifyConditionalIndicators(
+                    Set<String> conditionalIndicators,
+                    String _eventId,
+                    LdapObjectDefinition objectDef,
+                    LdapCallbackContext context,
+                    FoundObjectMethod foundObjectMethod,
+                    String pkey,
+                    String _dn,
+                    Map<String, Object> oldAttributeMap,
+                    Map<String, Object> newAttributeMap
+            ) {
+                if (condition) {
+                    conditionalIndicators << condition
+                }
+            }
+        }
+        ldapConnector.conditionalCallbacks.add(conditionalCallback)
+
+        and: "create directory entry"
+        addOu("people")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn              : dn,
+                uid             : uid,
+                objectClass     : objectClasses,
+                sn              : "User",
+                cn              : "Test User",
+                (createDescAttr): "initial test"
+        ], false)
+
+        and: "update directory entry, if requested"
+        boolean didUpdate = false
+        if (updateDescAttr) {
+            didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                    dn              : dn,
+                    uid             : uid,
+                    objectClass     : objectClasses,
+                    (updateDescAttr): "updated test"
+            ], false)
+        }
+
+        and: "retrieve directory entry"
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        ldapConnector.conditionalCallbacks.clear()
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didCreate
+        retrieved.size() == 1
+        retrieved.first().description == exptdDescription
+
+        where:
+        description                                        | createDescAttr          | updateDescAttr          | condToSet               || exptdDescription
+        "attribute condition is met"                       | "description.CONDITION" | null                    | "description.CONDITION" || "initial test"
+        "global condition is met"                          | "description.CONDITION" | null                    | "CONDITION"             || "initial test"
+        "condition is not met"                             | "description.CONDITION" | null                    | null                    || null
+        "ONCREATE condition is met"                        | "description.ONCREATE"  | null                    | null                    || "initial test"
+        "update attribute condition is met"                | "description.CONDITION" | "description.CONDITION" | "description.CONDITION" || "updated test"
+        "entry updated but only ONCREATE condition is met" | "description.ONCREATE"  | "description.CONDITION" | null                    || "initial test"
     }
 
     void "test updates with renaming disabled"() {
