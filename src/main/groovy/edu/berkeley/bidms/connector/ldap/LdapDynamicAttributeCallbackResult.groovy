@@ -27,26 +27,9 @@
 
 package edu.berkeley.bidms.connector.ldap
 
-import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
-
-interface LdapDynamicAttributeCallback {
+class LdapDynamicAttributeCallbackResult {
     /**
-     * @return A LdapDynamicAttributeCallbackResult instance that contains
-     * the attributeValue or null if the attribute is not to be modified. 
-     * If you wish to remove the attribute, return an instance of
-     * LdapDynamicAttributeCallbackResult where the attributeValue is set to
-     * null.
+     * The new attribute value.  A null indicates the attribute is to be removed.
      */
-    LdapDynamicAttributeCallbackResult attributeValue(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
-            FoundObjectMethod foundObjectMethod,
-            String pkey,
-            String dn,
-            String attributeName,
-            Object existingValue,
-            String dynamicCallbackIndicator,
-            Object dynamicValueTemplate
-    )
+    Object attributeValue
 }

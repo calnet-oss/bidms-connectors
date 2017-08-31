@@ -151,7 +151,7 @@ class LdapConnector implements Connector {
     Map<String, LdapDynamicAttributeCallback> dynamicAttributeCallbacks = [
             ONCREATE: new LdapDynamicAttributeCallback() {
                 @Override
-                LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
+                LdapDynamicAttributeCallbackResult attributeValue(
                         String _eventId,
                         LdapObjectDefinition objectDef,
                         LdapCallbackContext context,
@@ -165,7 +165,7 @@ class LdapConnector implements Connector {
                 ) {
                     if (!foundObjectMethod) {
                         // create
-                        return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                        return new LdapDynamicAttributeCallbackResult(
                                 attributeValue: dynamicValueTemplate
                         )
                     } else {
@@ -175,7 +175,7 @@ class LdapConnector implements Connector {
             },
             ONUPDATE: new LdapDynamicAttributeCallback() {
                 @Override
-                LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
+                LdapDynamicAttributeCallbackResult attributeValue(
                         String _eventId,
                         LdapObjectDefinition objectDef,
                         LdapCallbackContext context,
@@ -189,7 +189,7 @@ class LdapConnector implements Connector {
                 ) {
                     if (foundObjectMethod) {
                         // update
-                        return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                        return new LdapDynamicAttributeCallbackResult(
                                 attributeValue: dynamicValueTemplate
                         )
                     } else {
@@ -1030,7 +1030,7 @@ class LdapConnector implements Connector {
                     if (!callback) {
                         throw new LdapConnectorException("A callback for dynamic attribute $dynamicCallbackIndicator is not set")
                     }
-                    LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult result = callback.attributeValue(
+                    LdapDynamicAttributeCallbackResult result = callback.attributeValue(
                             eventId,
                             (LdapObjectDefinition) objectDef,
                             (LdapCallbackContext) context,

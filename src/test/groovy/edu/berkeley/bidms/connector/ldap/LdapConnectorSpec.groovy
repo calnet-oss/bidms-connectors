@@ -679,7 +679,7 @@ class LdapConnectorSpec extends Specification {
         boolean _conditionIsSet = conditionActive
         ldapConnector.dynamicAttributeCallbacks["description.CONDITION"] = new LdapDynamicAttributeCallback() {
             @Override
-            LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
+            LdapDynamicAttributeCallbackResult attributeValue(
                     String _eventId,
                     LdapObjectDefinition objectDef,
                     LdapCallbackContext context,
@@ -693,7 +693,7 @@ class LdapConnectorSpec extends Specification {
             ) {
                 if (_conditionIsSet) {
                     // update
-                    return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                    return new LdapDynamicAttributeCallbackResult(
                             attributeValue: dynamicValueTemplate
                     )
                 } else {
