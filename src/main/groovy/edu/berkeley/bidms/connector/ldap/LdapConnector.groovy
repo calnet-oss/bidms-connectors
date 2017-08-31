@@ -123,10 +123,81 @@ class LdapConnector implements Connector {
     List<LdapSetAttributeEventCallback> setAttributeEventCallbacks = []
 
     /**
-     * Callbacks that modify the conditional indicator collection.
-     * This pairs with the conditionalAttributeNames from the ObjectDefinition.
+     * Callbacks that dynamically determine the value of an attribute.
+     * </p>
+     * The key of the map is one of:
+     * <ul>
+     *     <li>attributeName.indicator - for a callback specific to an
+     *         attribute and a dynamic indicator</li>
+     *     <li>indicator - for a callback applicable to all attributes for a
+     *         dynamic indicator (i.e., a global indicator)</li>
+     * </ul>
+     * where "indicator" matches the indicator in the values placed in the
+     * <code>dynamicAttributeNames</code> array in the object definition. 
+     * The callback only runs for an attribute if it's specified in the
+     * <code>dynamicAttributeNames</code> array.
+     *
+     * <p/>
+     * There are a few default global indicator callback implementations:
+     * <ul>
+     *     <li>ONCREATE - Only sets the attribute value when the object is
+     *         being created in the downstream system.</li>
+     *     <li>ONUPDATE - Only sets the attribute value when the object is
+     *         being updated in the downstream system.</li>
+     * </ul>
+     * These can be replaced with your own implementations (or removed), if
+     * you have a need for different behavior.
      */
-    List<LdapConditionalCallback> conditionalCallbacks = []
+    Map<String, LdapDynamicAttributeCallback> dynamicAttributeCallbacks = [
+            ONCREATE: new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (!foundObjectMethod) {
+                        // create
+                        return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
+                    } else {
+                        return null
+                    }
+                }
+            },
+            ONUPDATE: new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (foundObjectMethod) {
+                        // update
+                        return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
+                    } else {
+                        return null
+                    }
+                }
+            }
+    ]
 
     /**
      * For queuing up asynchronous callback messages
@@ -886,10 +957,16 @@ class LdapConnector implements Connector {
         if (dnOnCreate != null) {
             attrMapCopy.remove("dn.ONCREATE")
         }
+        if (dnOnCreate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONCREATE")) {
+            throw new LdapConnectorException("dn.ONCREATE is provided but it is not listed in dynamicAttributeNames in the object definition")
+        }
 
         String dnOnUpdate = attrMapCopy["dn.ONUPDATE"]
         if (dnOnUpdate != null) {
             attrMapCopy.remove("dn.ONUPDATE")
+        }
+        if (dnOnUpdate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONUPDATE")) {
+            throw new LdapConnectorException("dn.ONUPDATE is provided but it is not listed in dynamicAttributeNames in the object definition")
         }
 
         if (dnOnCreate && dnOnUpdate) {
@@ -921,49 +998,60 @@ class LdapConnector implements Connector {
                 }
             }
 
-            // renaming is only disabled when neither dn.ONUPDATE nor dn exists in the attribute map.
+            // renaming is only disabled when neither dn.ONUPDATE nor dn
+            // exists in the attribute map.
             boolean renamingEnabled = dnOnUpdate || dnNotConditional
 
-            // Deal with conditional attributes.
-            // Add pre-set global ONCREATE or ONUPDATE depending on whether there's an existing entry or not.
-            HashSet<String> conditionalIndicators = [(existingEntry ? "ONUPDATE" : "ONCREATE")]
-            String[] conditionalAttributeNames = ((LdapObjectDefinition) objectDef).conditionalAttributeNames
-            if (conditionalAttributeNames) {
-                Map<String, Object> existingAttributeMap = (existingEntry ? toMapContextMapper.mapFromContext(existingEntry) : null)
-                Map<String, Object> convertedNewAttrMap = convertCallerProvidedMap(attrMapCopy)
-                // Create the conditional indicator set
-                conditionalCallbacks?.each { LdapConditionalCallback conditionalCallback ->
-                    conditionalCallback.modifyConditionalIndicators(
-                            conditionalIndicators,
+            // Deal with dynamic attributes
+            ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
+                // everything before the last dot is the attribute name and
+                // everything after the last dot is the dynamic callback
+                // indicator
+                String attributeName = attrNameAndIndicator.substring(0, attrNameAndIndicator.lastIndexOf('.'))
+                String dynamicCallbackIndicator = attrNameAndIndicator.substring(attributeName.length() + 1)
+
+                Object dynamicValueTemplate = attrMapCopy[attrNameAndIndicator]
+                attrMapCopy.remove(attrNameAndIndicator)
+
+                if (dynamicValueTemplate != null) {
+                    Object existingAttributeValue = null
+                    Attribute existingAttribute = null
+                    try {
+                        existingAttribute = (existingEntry ? existingEntry.getAttributes(existingEntry.dn)?.get(attributeName) : null)
+                    }
+                    catch (javax.naming.NameNotFoundException ignored) {
+                        // no-op
+                    }
+                    if (existingAttribute) {
+                        existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
+                    }
+
+                    LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
+                    if (!callback) {
+                        throw new LdapConnectorException("A callback for dynamic attribute $dynamicCallbackIndicator is not set")
+                    }
+                    LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult result = callback.attributeValue(
                             eventId,
                             (LdapObjectDefinition) objectDef,
                             (LdapCallbackContext) context,
                             foundObjectMethod,
                             pkey,
                             dn,
-                            existingAttributeMap,
-                            convertedNewAttrMap
+                            attributeName,
+                            existingAttributeValue,
+                            dynamicCallbackIndicator,
+                            dynamicValueTemplate
                     )
-                }
 
-                // remove attributes that don't meet conditions or rename the ones that do
-                conditionalAttributeNames.each { String attrNameAndCondIndicator ->
-                    if (attrMapCopy.containsKey(attrNameAndCondIndicator)) {
-                        // everything before the last dot is the attribute name and everything after the last dot is the condition indicator
-                        String attributeName = attrNameAndCondIndicator.substring(0, attrNameAndCondIndicator.lastIndexOf('.'))
-                        String conditionIndicator = attrNameAndCondIndicator.substring(attributeName.length() + 1)
-
-                        // the conditional indicator list may contain "attrName.condition" or just "condition" where the latter is a global condition indicator
-                        boolean setConditionalAttribute = conditionalIndicators.contains(attrNameAndCondIndicator) || conditionalIndicators.contains(conditionIndicator)
-                        if (setConditionalAttribute) {
-                            // this attribute is to be set, so rename it in attrMap to remove the condition indicator suffix
-                            Object conditionalAttrValue = attrMapCopy[attrNameAndCondIndicator]
-                            attrMapCopy.remove(attrNameAndCondIndicator)
-                            attrMapCopy[attributeName] = conditionalAttrValue
-                        } else {
-                            // this attribute is not to be set, so remove it from attrMap
-                            attrMapCopy.remove(attrNameAndCondIndicator)
-                        }
+                    if (result) {
+                        // a null attributeValue will result in attribute
+                        // removal
+                        attrMapCopy[attributeName] = result.attributeValue
+                    } else {
+                        // Don't modify: The attribute name shouldn't be in
+                        // the map, but ust in case it is, remove it so we
+                        // leave it unchanged downstream.
+                        attrMapCopy.remove(attributeName)
                     }
                 }
             }
@@ -1071,7 +1159,9 @@ class LdapConnector implements Connector {
                 Object insertedGloballyUniqId = insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
                 isModified = true
 
-                boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).conditionalAttributeNames.any { it.endsWith(".ONUPDATE") }
+                boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).dynamicAttributeNames.any {
+                    it.endsWith(".ONUPDATE")
+                }
                 if (hasUpdateOnlyAttributes) {
                     // Since there are update-only attributes, we do a subsequent
                     // update after the insert.

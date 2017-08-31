@@ -662,40 +662,45 @@ class LdapConnectorSpec extends Specification {
     }
 
     @Unroll("#description")
-    void "test conditional attributes"() {
+    void "test dynamic attributes"() {
         given:
         UidObjectDefinition objDef = new UidObjectDefinition(
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                conditionalAttributeNames: ["description.CONDITION", "description.ONCREATE", "description.ONUPDATE"] as String[]
+                dynamicAttributeNames: ["description.ONCREATE", "description.ONUPDATE", "description.CONDITION"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
 
-        when: "initialize conditions"
-        String condition = condToSet
-        LdapConditionalCallback conditionalCallback = new LdapConditionalCallback() {
+        when: "initialize callbacks"
+        boolean _conditionIsSet = conditionActive
+        ldapConnector.dynamicAttributeCallbacks["description.CONDITION"] = new LdapDynamicAttributeCallback() {
             @Override
-            void modifyConditionalIndicators(
-                    Set<String> conditionalIndicators,
+            LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult attributeValue(
                     String _eventId,
                     LdapObjectDefinition objectDef,
                     LdapCallbackContext context,
                     FoundObjectMethod foundObjectMethod,
                     String pkey,
                     String _dn,
-                    Map<String, Object> oldAttributeMap,
-                    Map<String, Object> newAttributeMap
+                    String attributeName,
+                    Object existingValue,
+                    String dynamicCallbackIndicator,
+                    Object dynamicValueTemplate
             ) {
-                if (condition) {
-                    conditionalIndicators << condition
+                if (_conditionIsSet) {
+                    // update
+                    return new LdapDynamicAttributeCallback.LdapDynamicAttributeCallbackResult(
+                            attributeValue: dynamicValueTemplate
+                    )
+                } else {
+                    return null
                 }
             }
         }
-        ldapConnector.conditionalCallbacks.add(conditionalCallback)
 
         and: "create directory entry"
         addOu("people")
@@ -705,7 +710,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass     : objectClasses,
                 sn              : "User",
                 cn              : "Test User",
-                (createDescAttr): "initial test"
+                (createDescAttr): "initial description"
         ], false)
 
         and: "update directory entry, if requested"
@@ -715,7 +720,7 @@ class LdapConnectorSpec extends Specification {
                     dn              : dn,
                     uid             : uid,
                     objectClass     : objectClasses,
-                    (updateDescAttr): "updated test"
+                    (updateDescAttr): "updated description"
             ], false)
         }
 
@@ -723,7 +728,7 @@ class LdapConnectorSpec extends Specification {
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
         and: "cleanup"
-        ldapConnector.conditionalCallbacks.clear()
+        ldapConnector.dynamicAttributeCallbacks.remove("description.CONDITION")
         deleteDn(dn)
         deleteOu("people")
 
@@ -733,13 +738,12 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == exptdDescription
 
         where:
-        description                                        | createDescAttr          | updateDescAttr          | condToSet               || exptdDescription
-        "attribute condition is met"                       | "description.CONDITION" | null                    | "description.CONDITION" || "initial test"
-        "global condition is met"                          | "description.CONDITION" | null                    | "CONDITION"             || "initial test"
-        "condition is not met"                             | "description.CONDITION" | null                    | null                    || null
-        "ONCREATE condition is met"                        | "description.ONCREATE"  | null                    | null                    || "initial test"
-        "update attribute condition is met"                | "description.CONDITION" | "description.CONDITION" | "description.CONDITION" || "updated test"
-        "entry updated but only ONCREATE condition is met" | "description.ONCREATE"  | "description.CONDITION" | null                    || "initial test"
+        description                                        | createDescAttr          | updateDescAttr          | conditionActive || exptdDescription
+        "attribute condition is met"                       | "description.CONDITION" | null                    | true            || "initial description"
+        "condition is not met"                             | "description.CONDITION" | null                    | false           || null
+        "ONCREATE condition is met"                        | "description.ONCREATE"  | null                    | false           || "initial description"
+        "update attribute condition is met"                | "description.CONDITION" | "description.ONUPDATE"  | true            || "updated description"
+        "entry updated but only ONCREATE condition is met" | "description.ONCREATE"  | "description.CONDITION" | false           || "initial description"
     }
 
     void "test updates with renaming disabled"() {
@@ -748,7 +752,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                conditionalAttributeNames: ["dn.ONCREATE"] as String[]
+                dynamicAttributeNames: ["dn.ONCREATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -959,7 +963,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                conditionalAttributeNames: ["cn.ONCREATE"] as String[]
+                dynamicAttributeNames: ["cn.ONCREATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -1011,7 +1015,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
                 removeDuplicatePrimaryKeys: true,
-                conditionalAttributeNames: ["description.ONUPDATE"] as String[]
+                dynamicAttributeNames: ["description.ONUPDATE"] as String[]
         )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"

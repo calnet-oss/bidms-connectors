@@ -118,28 +118,25 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     String[] getAppendOnlyAttributeNames();
 
     /**
-     * Returns An array of attribute names indicating attributes that are
-     * only set if a condition indicator is present in the conditional
-     * indicator collection created by a conditional callback that's
-     * configured for the connector.
+     * Returns an array of attribute names (with their dynamic indicators)
+     * for which the values of these attributes are dynamically determined by
+     * a callback that is assigned to the dynamic indicator.
      * <p/>
-     * The strings in this array follow naming convention for conditional
-     * attributes: <code>attributeName.condition</code> where
-     * <i>attributeName</i> is the attribute in the downstream system and
-     * <i>condition</i> is the indicator string that is possibly present in
-     * the conditional indicator collection.  If it is present in the
-     * conditional indicator collection, the attribute is set.  If it's not
-     * present, it's not set.  <i>ONCREATE</i> and <i>ONUPDATE</i> are
-     * pre-set global conditions depending on whether the downstream entry
-     * exists or not at time of persistence.
+     * The strings in this array have the following naming convention:
+     * <code>attributeName.indicator</code> where <i>attributeName</i> is the
+     * attribute in the downstream system and <i>indicator</i> is a string
+     * that identifies which callback to use.  The callbacks are configured
+     * in the connector's dynamicAttributeCallbacks map, where the map key is
+     * <i>attributeName.indicator</i> or <i>indicator</i> (for an indicator
+     * that applies to all attributes) and the value is the instance of the
+     * callback.
      * <p/>
      * 'dn.ONCREATE' may be included, which is a special case that will
-     * disable renaming the object.
+     * disable renaming of the object.
      *
-     * @return An array of attribute names indicating attributes that are
-     * only set if a condition indicator is present in the conditional
-     * indicator collection created by a conditional callback that's
-     * configured for the connector.
+     * @return An array of attribute names (with their dynamic indicators)
+     * for which the values of these attributes are dynamically determined by
+     * a callback that is assigned to the dynamic indicator.
      */
-    String[] getConditionalAttributeNames();
+    String[] getDynamicAttributeNames();
 }

@@ -29,16 +29,28 @@ package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 
-interface LdapConditionalCallback {
-    void modifyConditionalIndicators(
-            Set<String> conditionalIndicators,
+interface LdapDynamicAttributeCallback {
+    static class LdapDynamicAttributeCallbackResult {
+        /**
+         * The new attribute value.  A null indicates the attribute is to be removed.
+         */
+        Object attributeValue
+    }
+
+    /**
+     * @return A LdapDynamicAttributeCallbackResult instance that contains the attributeValue or null if the attribute is not to be modified.
+     * If you wish to remove the attribute, return an instance of LdapDynamicAttributeCallbackResult where the attributeValue is set to null.
+     */
+    LdapDynamicAttributeCallbackResult attributeValue(
             String eventId,
             LdapObjectDefinition objectDef,
             LdapCallbackContext context,
             FoundObjectMethod foundObjectMethod,
             String pkey,
             String dn,
-            Map<String, Object> oldAttributeMap,
-            Map<String, Object> newAttributeMap
+            String attributeName,
+            Object existingValue,
+            String dynamicCallbackIndicator,
+            Object dynamicValueTemplate
     )
 }
