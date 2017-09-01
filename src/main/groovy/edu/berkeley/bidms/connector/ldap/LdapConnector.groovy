@@ -144,6 +144,8 @@ class LdapConnector implements Connector {
      *         being created in the downstream system.</li>
      *     <li>ONUPDATE - Only sets the attribute value when the object is
      *         being updated in the downstream system.</li>
+     *     <li>APPEND - Only appends template values to the existing
+     *         multi-value attribute rather than overwriting it.</li>
      * </ul>
      * These can be replaced with your own implementations (or removed), if
      * you have a need for different behavior.
@@ -194,6 +196,42 @@ class LdapConnector implements Connector {
                         )
                     } else {
                         return null
+                    }
+                }
+            },
+            APPEND  : new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (existingValue) {
+                        // append to the existing list, but prevent case-insensitive duplicates
+                        if (!(existingValue instanceof List)) {
+                            existingValue = [existingValue]
+                        }
+                        HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) existingValue).collect { new CaseInsensitiveString(it.toString().trim()) })
+                        if (dynamicValueTemplate instanceof List) {
+                            set.addAll(((List) dynamicValueTemplate).collect { new CaseInsensitiveString(it.toString().trim()) })
+                        } else {
+                            set.add(new CaseInsensitiveString(dynamicValueTemplate.toString().trim()))
+                        }
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: new ArrayList<String>(set*.toString())
+                        )
+                    } else {
+                        // insert
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
                     }
                 }
             }
@@ -515,10 +553,6 @@ class LdapConnector implements Connector {
      *        the map are attribute names.  For changes to be detected
      *        properly the attribute names must match the case of the
      *        attribute in the directory.
-     * @param newAppendOnlyAttributeMap Multi-value attributes to append to
-     *        where the keys in the map are the attribute names.  For
-     *        changes to be detected properly the attribute names must match
-     *        the case of the attribute in the directory.
      * @return true if an update actually occured in the directory.  false
      *         may be returned if the object is unchanged.
      * @throws LdapConnectorException If an error occurs
@@ -531,8 +565,7 @@ class LdapConnector implements Connector {
             String pkey,
             DirContextAdapter existingEntry,
             String dn,
-            Map<String, Object> newReplaceAttributeMap,
-            Map<String, List<Object>> newAppendOnlyAttributeMap
+            Map<String, Object> newReplaceAttributeMap
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
@@ -549,25 +582,6 @@ class LdapConnector implements Connector {
                 attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
             } else {
                 attributesToKeepOrUpdate = convertedNewAttributeMap
-            }
-
-            newAppendOnlyAttributeMap?.each {
-                if (attributesToKeepOrUpdate.containsKey(it.key)) {
-                    // append to the existing list, but prevent case-insensitive duplicates
-                    if (!(attributesToKeepOrUpdate[it.key] instanceof List)) {
-                        attributesToKeepOrUpdate[it.key] = [attributesToKeepOrUpdate[it.key]]
-                    }
-                    HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) attributesToKeepOrUpdate[it.key]).collect { new CaseInsensitiveString(it.toString().trim()) })
-                    if (it.value instanceof List) {
-                        set.addAll(((List) it.value).collect { new CaseInsensitiveString(it.toString().trim()) })
-                    } else {
-                        set.add(new CaseInsensitiveString(it.value.toString().trim()))
-                    }
-                    attributesToKeepOrUpdate[it.key] = new ArrayList<String>(set*.toString())
-                } else {
-                    // insert
-                    attributesToKeepOrUpdate[it.key] = it.value
-                }
             }
 
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
@@ -1017,7 +1031,7 @@ class LdapConnector implements Connector {
                     Object existingAttributeValue = null
                     Attribute existingAttribute = null
                     try {
-                        existingAttribute = (existingEntry ? existingEntry.getAttributes(existingEntry.dn)?.get(attributeName) : null)
+                        existingAttribute = (existingEntry ? existingEntry.attributes?.get(attributeName) : null)
                     }
                     catch (javax.naming.NameNotFoundException ignored) {
                         // no-op
@@ -1078,19 +1092,6 @@ class LdapConnector implements Connector {
                     wasRenamed = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>(attrMapCopy)
-                Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
-                ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
-                    if (newReplaceAttributeMap.containsKey(attrName)) {
-                        if (newReplaceAttributeMap[attrName] instanceof List) {
-                            newAppendOnlyAttributeMap[attrName] = (List) newReplaceAttributeMap[attrName]
-                        } else {
-                            newAppendOnlyAttributeMap[attrName] = [newReplaceAttributeMap[attrName]]
-                        }
-                        newReplaceAttributeMap.remove(attrName)
-                    }
-                }
-
                 if (!existingEntry.updateMode) {
                     existingEntry.updateMode = true
                 }
@@ -1103,8 +1104,7 @@ class LdapConnector implements Connector {
                         pkey,
                         existingEntry,
                         existingEntry.dn.toString(),
-                        newReplaceAttributeMap,
-                        newAppendOnlyAttributeMap
+                        attrMapCopy
                 )) {
                     isModified = true
                 }

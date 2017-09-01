@@ -173,7 +173,7 @@ class LdapConnectorSpec extends Specification {
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: keepExistingAttributesWhenUpdating,
                 removeDuplicatePrimaryKeys: true,
-                appendOnlyAttributeNames: appendAttrs as String[]
+                dynamicAttributeNames: dynamicAttrs as String[]
         )
 
         when:
@@ -183,22 +183,22 @@ class LdapConnectorSpec extends Specification {
         String eventId = "eventId"
         // create
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test",
-                mail       : ["test@berkeley.edu"]
+                dn                                                              : dn,
+                uid                                                             : uid,
+                objectClass                                                     : ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn                                                              : "User",
+                cn                                                              : "Test User",
+                description                                                     : "initial test",
+                (dynamicAttrs?.contains("mail.APPEND") ? "mail.APPEND" : "mail"): ["test@berkeley.edu"]
         ], false)
         // update - description is kept or removed based on the value of isKeepExistingAttributesWhenUpdating in objDef
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
-                sn         : "User",
-                cn         : "Test User",
-                mail       : mail2Override ?: ["test2@berkeley.edu"]
+                dn                                                              : dn,
+                uid                                                             : uid,
+                objectClass                                                     : ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn                                                              : "User",
+                cn                                                              : "Test User",
+                (dynamicAttrs?.contains("mail.APPEND") ? "mail.APPEND" : "mail"): mail2Override ?: ["test2@berkeley.edu"]
         ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]), false)
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
@@ -214,16 +214,16 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().mail == expectedMail
 
         where:
-        description                                                                                                             | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | appendAttrs | mail2Override          | expectedDescription | expectedMail
-        "isKeepExistingAttributesWhenUpdating=true"                                                                             | true                               | null           | false           | null        | null                   | "initial test"      | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=false"                                                                            | false                              | null           | false           | null        | null                   | null                | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description"                                                | true                               | "updated"      | false           | null        | null                   | "updated"           | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail"                             | true                               | "updated"      | false           | ["mail"]    | null                   | "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with different case as orig" | true                               | "updated"      | false           | ["mail"]    | ["test@BERKELEY.EDU"]  | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with leading space"          | true                               | "updated"      | false           | ["mail"]    | [" test@berkeley.edu"] | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with trailing space"         | true                               | "updated"      | false           | ["mail"]    | ["test@berkeley.edu "] | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail using string not list"       | true                               | "updated"      | false           | ["mail"]    | "test@berkeley.edu"    | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, remove existing description by explicit null"                               | true                               | null           | true            | null        | null                   | null                | "test2@berkeley.edu"
+        description                                                                                                             | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | dynamicAttrs    | mail2Override          || expectedDescription | expectedMail
+        "isKeepExistingAttributesWhenUpdating=true"                                                                             | true                               | null           | false           | null            | null                   || "initial test"      | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=false"                                                                            | false                              | null           | false           | null            | null                   || null                | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description"                                                | true                               | "updated"      | false           | null            | null                   || "updated"           | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail"                             | true                               | "updated"      | false           | ["mail.APPEND"] | null                   || "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with different case as orig" | true                               | "updated"      | false           | ["mail.APPEND"] | ["test@BERKELEY.EDU"]  || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with leading space"          | true                               | "updated"      | false           | ["mail.APPEND"] | [" test@berkeley.edu"] || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with trailing space"         | true                               | "updated"      | false           | ["mail.APPEND"] | ["test@berkeley.edu "] || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail using string not list"       | true                               | "updated"      | false           | ["mail.APPEND"] | "test@berkeley.edu"    || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, remove existing description by explicit null"                               | true                               | null           | true            | null            | null                   || null                | "test2@berkeley.edu"
     }
 
     @Unroll("#description")

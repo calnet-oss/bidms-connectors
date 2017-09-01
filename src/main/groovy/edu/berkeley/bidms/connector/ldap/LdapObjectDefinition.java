@@ -112,12 +112,6 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     String getObjectClass();
 
     /**
-     * @return A list of attribute names, which must be multi-value
-     * attributes, to append to rather than overwrite when updating.
-     */
-    String[] getAppendOnlyAttributeNames();
-
-    /**
      * Returns an array of attribute names (with their dynamic indicators)
      * for which the values of these attributes are dynamically determined by
      * a callback that is assigned to the dynamic indicator.

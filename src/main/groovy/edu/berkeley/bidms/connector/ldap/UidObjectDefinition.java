@@ -57,13 +57,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private boolean removeDuplicatePrimaryKeys;
 
     /**
-     * An array of attribute names, which must be multi-value attributes, to
-     * append to rather than overwrite when updating. A common example would
-     * be objectClass.
-     */
-    private String[] appendOnlyAttributeNames;
-
-    /**
      * An array of attribute names (with their dynamic indicators) for which
      * the values of these attributes are dynamically determined by a
      * callback that is assigned to the dynamic indicator.
@@ -230,25 +223,6 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setObjectClass(String objectClass) {
         this.objectClass = objectClass;
-    }
-
-    /**
-     * @return A list of attribute names, which must be multi-value
-     * attributes, to append to rather than overwrite when updating.
-     */
-    @Override
-    public String[] getAppendOnlyAttributeNames() {
-        return appendOnlyAttributeNames;
-    }
-
-    /**
-     * @param appendOnlyAttributeNames A list of attribute names, which must
-     *                                 be multi-value attributes, to append
-     *                                 to rather than overwrite when
-     *                                 updating.
-     */
-    public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
-        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
     }
 
     /**
