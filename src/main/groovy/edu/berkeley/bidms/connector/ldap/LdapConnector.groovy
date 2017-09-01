@@ -1042,7 +1042,7 @@ class LdapConnector implements Connector {
 
                     LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
                     if (!callback) {
-                        throw new LdapConnectorException("A callback for dynamic attribute $dynamicCallbackIndicator is not set")
+                        throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
                     }
                     LdapDynamicAttributeCallbackResult result = callback.attributeValue(
                             eventId,
@@ -1164,12 +1164,15 @@ class LdapConnector implements Connector {
                 }
                 if (hasUpdateOnlyAttributes) {
                     // Since there are update-only attributes, we do a subsequent
-                    // update after the insert.
-                    LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
+                    // update after the insert, but only if we found the object
+                    // we just inserted.
                     if (insertedGloballyUniqId) {
+                        LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
                         attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
+                        persist(eventId, objectDef, context, attrMapForUpdate, false)
+                    } else {
+                        log.warn("pkey $pkey has ONUPDATE attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
                     }
-                    persist(eventId, objectDef, context, attrMapForUpdate, false)
                 }
             }
         } else {
@@ -1255,7 +1258,7 @@ class LdapConnector implements Connector {
      * @param map
      * @return
      */
-    private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
+    protected Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
         return map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
             [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : convertCallerProvidedValue(it.value))]
         }
@@ -1268,7 +1271,7 @@ class LdapConnector implements Connector {
      * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
-    private Object convertCallerProvidedList(List list) {
+    protected Object convertCallerProvidedList(List list) {
         if (list.size() == 1) {
             return convertCallerProvidedValue(list.first())
         } else {
@@ -1283,7 +1286,7 @@ class LdapConnector implements Connector {
      * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
-    private Object convertCallerProvidedValue(Object value) {
+    protected Object convertCallerProvidedValue(Object value) {
         if (value instanceof String || value instanceof Number || value instanceof Boolean) {
             // Directory servers interpret numbers and booleans as strings,
             // so we use toString()
