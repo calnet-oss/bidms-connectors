@@ -112,22 +112,25 @@ public interface LdapObjectDefinition extends ObjectDefinition {
     String getObjectClass();
 
     /**
-     * @return A list of attribute names, which must be multi-value
-     * attributes, to append to rather than overwrite when updating.
+     * Returns an array of attribute names (with their dynamic indicators)
+     * for which the values of these attributes are dynamically determined by
+     * a callback that is assigned to the dynamic indicator.
+     * <p/>
+     * The strings in this array have the following naming convention:
+     * <code>attributeName.indicator</code> where <i>attributeName</i> is the
+     * attribute in the downstream system and <i>indicator</i> is a string
+     * that identifies which callback to use.  The callbacks are configured
+     * in the connector's dynamicAttributeCallbacks map, where the map key is
+     * <i>attributeName.indicator</i> or <i>indicator</i> (for an indicator
+     * that applies to all attributes) and the value is the instance of the
+     * callback.
+     * <p/>
+     * 'dn.ONCREATE' may be included, which is a special case that will
+     * disable renaming of the object.
+     *
+     * @return An array of attribute names (with their dynamic indicators)
+     * for which the values of these attributes are dynamically determined by
+     * a callback that is assigned to the dynamic indicator.
      */
-    String[] getAppendOnlyAttributeNames();
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be inserted and should be left alone during updates.  'dn' may be
-     * included, which is a special case that will disable renaming the
-     * object.
-     */
-    String[] getInsertOnlyAttributeNames();
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be updated and should be left out during inserts.
-     */
-    String[] getUpdateOnlyAttributeNames();
+    String[] getDynamicAttributeNames();
 }

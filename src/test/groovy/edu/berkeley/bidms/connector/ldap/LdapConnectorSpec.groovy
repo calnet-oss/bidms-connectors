@@ -28,6 +28,7 @@
 package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.ConnectorObjectNotFoundException
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
@@ -168,7 +169,12 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test keepExistingAttributesWhenUpdating"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", keepExistingAttributesWhenUpdating, true, appendAttrs as String[], null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: keepExistingAttributesWhenUpdating,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: dynamicAttrs as String[]
+        )
 
         when:
         addOu("people")
@@ -177,22 +183,22 @@ class LdapConnectorSpec extends Specification {
         String eventId = "eventId"
         // create
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test",
-                mail       : ["test@berkeley.edu"]
+                dn                                                              : dn,
+                uid                                                             : uid,
+                objectClass                                                     : ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn                                                              : "User",
+                cn                                                              : "Test User",
+                description                                                     : "initial test",
+                (dynamicAttrs?.contains("mail.APPEND") ? "mail.APPEND" : "mail"): ["test@berkeley.edu"]
         ], false)
         // update - description is kept or removed based on the value of isKeepExistingAttributesWhenUpdating in objDef
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
-                sn         : "User",
-                cn         : "Test User",
-                mail       : mail2Override ?: ["test2@berkeley.edu"]
+                dn                                                              : dn,
+                uid                                                             : uid,
+                objectClass                                                     : ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn                                                              : "User",
+                cn                                                              : "Test User",
+                (dynamicAttrs?.contains("mail.APPEND") ? "mail.APPEND" : "mail"): mail2Override ?: ["test2@berkeley.edu"]
         ] + (updateDescAttr || nullOutDescAttr ? ["description": (nullOutDescAttr ? null : updateDescAttr)] : [:]), false)
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
@@ -208,22 +214,26 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().mail == expectedMail
 
         where:
-        description                                                                                                             | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | appendAttrs | mail2Override          | expectedDescription | expectedMail
-        "isKeepExistingAttributesWhenUpdating=true"                                                                             | true                               | null           | false           | null        | null                   | "initial test"      | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=false"                                                                            | false                              | null           | false           | null        | null                   | null                | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description"                                                | true                               | "updated"      | false           | null        | null                   | "updated"           | "test2@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail"                             | true                               | "updated"      | false           | ["mail"]    | null                   | "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with different case as orig" | true                               | "updated"      | false           | ["mail"]    | ["test@BERKELEY.EDU"]  | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with leading space"          | true                               | "updated"      | false           | ["mail"]    | [" test@berkeley.edu"] | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with trailing space"         | true                               | "updated"      | false           | ["mail"]    | ["test@berkeley.edu "] | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail using string not list"       | true                               | "updated"      | false           | ["mail"]    | "test@berkeley.edu"    | "updated"           | "test@berkeley.edu"
-        "isKeepExistingAttributesWhenUpdating=true, remove existing description by explicit null"                               | true                               | null           | true            | null        | null                   | null                | "test2@berkeley.edu"
+        description                                                                                                             | keepExistingAttributesWhenUpdating | updateDescAttr | nullOutDescAttr | dynamicAttrs    | mail2Override          || expectedDescription | expectedMail
+        "isKeepExistingAttributesWhenUpdating=true"                                                                             | true                               | null           | false           | null            | null                   || "initial test"      | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=false"                                                                            | false                              | null           | false           | null            | null                   || null                | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description"                                                | true                               | "updated"      | false           | null            | null                   || "updated"           | "test2@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail"                             | true                               | "updated"      | false           | ["mail.APPEND"] | null                   || "updated"           | ["test@berkeley.edu", "test2@berkeley.edu"]
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with different case as orig" | true                               | "updated"      | false           | ["mail.APPEND"] | ["test@BERKELEY.EDU"]  || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with leading space"          | true                               | "updated"      | false           | ["mail.APPEND"] | [" test@berkeley.edu"] || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail with trailing space"         | true                               | "updated"      | false           | ["mail.APPEND"] | ["test@berkeley.edu "] || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, update existing description and append to mail using string not list"       | true                               | "updated"      | false           | ["mail.APPEND"] | "test@berkeley.edu"    || "updated"           | "test@berkeley.edu"
+        "isKeepExistingAttributesWhenUpdating=true, remove existing description by explicit null"                               | true                               | null           | true            | null            | null                   || null                | "test2@berkeley.edu"
     }
 
     @Unroll("#description")
     void "test LdapConnector persistence"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, removeDupes, null, null, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: removeDupes
+        )
         String eventId = "eventId"
 
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
@@ -364,7 +374,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test persist return value on a non-modification"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
 
         when:
         addOu("people")
@@ -400,7 +414,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
         given:
-        UidObjectDefinition uidObjectDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition uidObjectDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
 
         addOu("namespace")
 
@@ -471,7 +489,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test asynchronous callback"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -536,7 +558,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test deletes"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, removeDupePkeys, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: removeDupePkeys
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -598,7 +624,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test updates without specifying a DN"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -631,9 +661,99 @@ class LdapConnectorSpec extends Specification {
         1 * uniqueIdentifierEventCallback.receive(_)
     }
 
+    @Unroll("#description")
+    void "test dynamic attributes"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["description.ONCREATE", "description.ONUPDATE", "description.CONDITION"] as String[]
+        )
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when: "initialize callbacks"
+        boolean _conditionIsSet = conditionActive
+        ldapConnector.dynamicAttributeCallbacks["description.CONDITION"] = new LdapDynamicAttributeCallback() {
+            @Override
+            LdapDynamicAttributeCallbackResult attributeValue(
+                    String _eventId,
+                    LdapObjectDefinition objectDef,
+                    LdapCallbackContext context,
+                    FoundObjectMethod foundObjectMethod,
+                    String pkey,
+                    String _dn,
+                    String attributeName,
+                    Object existingValue,
+                    String dynamicCallbackIndicator,
+                    Object dynamicValueTemplate
+            ) {
+                if (_conditionIsSet) {
+                    // update
+                    return new LdapDynamicAttributeCallbackResult(
+                            attributeValue: dynamicValueTemplate
+                    )
+                } else {
+                    return null
+                }
+            }
+        }
+
+        and: "create directory entry"
+        addOu("people")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn              : dn,
+                uid             : uid,
+                objectClass     : objectClasses,
+                sn              : "User",
+                cn              : "Test User",
+                (createDescAttr): "initial description"
+        ], false)
+
+        and: "update directory entry, if requested"
+        boolean didUpdate = false
+        if (updateDescAttr) {
+            didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                    dn              : dn,
+                    uid             : uid,
+                    objectClass     : objectClasses,
+                    (updateDescAttr): "updated description"
+            ], false)
+        }
+
+        and: "retrieve directory entry"
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        ldapConnector.dynamicAttributeCallbacks.remove("description.CONDITION")
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        didCreate
+        retrieved.size() == 1
+        retrieved.first().description == exptdDescription
+
+        where:
+        description                                        | createDescAttr          | updateDescAttr          | conditionActive || exptdDescription
+        "attribute condition is met"                       | "description.CONDITION" | null                    | true            || "initial description"
+        "condition is not met"                             | "description.CONDITION" | null                    | false           || null
+        "ONCREATE condition is met"                        | "description.ONCREATE"  | null                    | false           || "initial description"
+        "update attribute condition is met"                | "description.CONDITION" | "description.ONUPDATE"  | true            || "updated description"
+        "entry updated but only ONCREATE condition is met" | "description.ONCREATE"  | "description.CONDITION" | false           || "initial description"
+    }
+
     void "test updates with renaming disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["dn"] as String[], null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["dn.ONCREATE"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -645,12 +765,12 @@ class LdapConnectorSpec extends Specification {
 
         // update
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : "uid=1,ou=expired people,dc=berkeley,dc=edu", // different dn than what we created with
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "updated"
+                "dn.ONCREATE": "uid=1,ou=expired people,dc=berkeley,dc=edu", // different dn than what we created with
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                cn           : "Test User",
+                description  : "updated"
         ], false)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
@@ -666,7 +786,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().dn == "uid=1,ou=people,dc=berkeley,dc=edu" // not renamed
         retrieved.first().description == "updated"
         1 * updateEventCallback.receive(_)
-        // but a uniqueId callback was produced signalling possible globally unique identifier change
+        // but a uniqueId callback was produced signaling possible globally unique identifier change
         1 * uniqueIdentifierEventCallback.receive(_) >> { LdapUniqueIdentifierEventMessage msg ->
             assert msg.success
             assert msg.causingEvent == LdapEventType.UPDATE_EVENT
@@ -682,7 +802,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test retrieving globally unique identifier"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -719,12 +843,17 @@ class LdapConnectorSpec extends Specification {
 
     void "test persistence when retrieving-by-primary-key is disabled"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, false, null, null, null) {
+        UidObjectDefinition objDef = new UidObjectDefinition() {
             @Override
             LdapQuery getLdapQueryForPrimaryKey(String pkey) {
                 // searching by primary key is disabled by returning null
                 return null
             }
+        }
+        objDef.with {
+            objectClass = "person"
+            keepExistingAttributesWhenUpdating = true
+            removeDuplicatePrimaryKeys = false
         }
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
@@ -777,7 +906,11 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test changing lists that have same values, just in a different case"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "1"
         String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
@@ -826,7 +959,12 @@ class LdapConnectorSpec extends Specification {
 
     void "test insert-only attribute"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, ["cn"] as String[], null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["cn.ONCREATE"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -836,22 +974,22 @@ class LdapConnectorSpec extends Specification {
         addOu("people")
         // create
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test"
+                dn           : dn,
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                "cn.ONCREATE": "Test User",
+                description  : "initial test"
         ], false)
 
         // update
         boolean didUpdate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "IGNORED", // not updated because cn in getInsertOnlyAttributeNames()
-                description: "updated"
+                dn           : dn,
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                "cn.ONCREATE": "IGNORED", // not updated because cn is insert-only
+                description  : "updated"
         ], false)
 
 
@@ -873,7 +1011,12 @@ class LdapConnectorSpec extends Specification {
 
     void "test update-only attribute"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, ["description"] as String[])
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["description.ONUPDATE"] as String[]
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -882,12 +1025,12 @@ class LdapConnectorSpec extends Specification {
         when:
         addOu("people")
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
-                uid        : uid,
-                objectClass: objectClasses,
-                sn         : "User",
-                cn         : "Test User",
-                description: "initial test"
+                dn                    : dn,
+                uid                   : uid,
+                objectClass           : objectClasses,
+                sn                    : "User",
+                cn                    : "Test User",
+                "description.ONUPDATE": "initial test"
         ], false)
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
@@ -909,7 +1052,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attribute removal"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -951,7 +1098,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attempted attribute removal on a nonexistent object"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "bogus"
         String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
@@ -971,7 +1122,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test setAttribute()"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
@@ -1014,7 +1169,11 @@ class LdapConnectorSpec extends Specification {
 
     void "test attempted setAttribute() on a nonexistent object"() {
         given:
-        UidObjectDefinition objDef = new UidObjectDefinition("person", true, true, null, null, null)
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
         String eventId = "eventId"
         String uid = "bogus"
         String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
@@ -1022,7 +1181,7 @@ class LdapConnectorSpec extends Specification {
         when:
         LdapConnectorException exception = null
         try {
-           ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
+            ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
         }
         catch (LdapConnectorException e) {
             exception = e

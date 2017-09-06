@@ -123,6 +123,121 @@ class LdapConnector implements Connector {
     List<LdapSetAttributeEventCallback> setAttributeEventCallbacks = []
 
     /**
+     * Callbacks that dynamically determine the value of an attribute.
+     * </p>
+     * The key of the map is one of:
+     * <ul>
+     *     <li>attributeName.indicator - for a callback specific to an
+     *         attribute and a dynamic indicator</li>
+     *     <li>indicator - for a callback applicable to all attributes for a
+     *         dynamic indicator (i.e., a global indicator)</li>
+     * </ul>
+     * where "indicator" matches the indicator in the values placed in the
+     * <code>dynamicAttributeNames</code> array in the object definition. 
+     * The callback only runs for an attribute if it's specified in the
+     * <code>dynamicAttributeNames</code> array.
+     *
+     * <p/>
+     * There are a few default global indicator callback implementations:
+     * <ul>
+     *     <li>ONCREATE - Only sets the attribute value when the object is
+     *         being created in the downstream system.</li>
+     *     <li>ONUPDATE - Only sets the attribute value when the object is
+     *         being updated in the downstream system.</li>
+     *     <li>APPEND - Only appends template values to the existing
+     *         multi-value attribute rather than overwriting it.</li>
+     * </ul>
+     * These can be replaced with your own implementations (or removed), if
+     * you have a need for different behavior.
+     */
+    Map<String, LdapDynamicAttributeCallback> dynamicAttributeCallbacks = [
+            ONCREATE: new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (!foundObjectMethod) {
+                        // create
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
+                    } else {
+                        return null
+                    }
+                }
+            },
+            ONUPDATE: new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (foundObjectMethod) {
+                        // update
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
+                    } else {
+                        return null
+                    }
+                }
+            },
+            APPEND  : new LdapDynamicAttributeCallback() {
+                @Override
+                LdapDynamicAttributeCallbackResult attributeValue(
+                        String _eventId,
+                        LdapObjectDefinition objectDef,
+                        LdapCallbackContext context,
+                        FoundObjectMethod foundObjectMethod,
+                        String pkey,
+                        String _dn,
+                        String attributeName,
+                        Object existingValue,
+                        String dynamicCallbackIndicator,
+                        Object dynamicValueTemplate
+                ) {
+                    if (existingValue) {
+                        // append to the existing list, but prevent case-insensitive duplicates
+                        if (!(existingValue instanceof List)) {
+                            existingValue = [existingValue]
+                        }
+                        HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) existingValue).collect { new CaseInsensitiveString(it.toString().trim()) })
+                        if (dynamicValueTemplate instanceof List) {
+                            set.addAll(((List) dynamicValueTemplate).collect { new CaseInsensitiveString(it.toString().trim()) })
+                        } else {
+                            set.add(new CaseInsensitiveString(dynamicValueTemplate.toString().trim()))
+                        }
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: new ArrayList<String>(set*.toString())
+                        )
+                    } else {
+                        // insert
+                        return new LdapDynamicAttributeCallbackResult(
+                                attributeValue: dynamicValueTemplate
+                        )
+                    }
+                }
+            }
+    ]
+
+    /**
      * For queuing up asynchronous callback messages
      */
     private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>());
@@ -438,10 +553,6 @@ class LdapConnector implements Connector {
      *        the map are attribute names.  For changes to be detected
      *        properly the attribute names must match the case of the
      *        attribute in the directory.
-     * @param newAppendOnlyAttributeMap Multi-value attributes to append to
-     *        where the keys in the map are the attribute names.  For
-     *        changes to be detected properly the attribute names must match
-     *        the case of the attribute in the directory.
      * @return true if an update actually occured in the directory.  false
      *         may be returned if the object is unchanged.
      * @throws LdapConnectorException If an error occurs
@@ -454,8 +565,7 @@ class LdapConnector implements Connector {
             String pkey,
             DirContextAdapter existingEntry,
             String dn,
-            Map<String, Object> newReplaceAttributeMap,
-            Map<String, List<Object>> newAppendOnlyAttributeMap
+            Map<String, Object> newReplaceAttributeMap
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> oldAttributeMap = null
@@ -472,25 +582,6 @@ class LdapConnector implements Connector {
                 attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
             } else {
                 attributesToKeepOrUpdate = convertedNewAttributeMap
-            }
-
-            newAppendOnlyAttributeMap?.each {
-                if (attributesToKeepOrUpdate.containsKey(it.key)) {
-                    // append to the existing list, but prevent case-insensitive duplicates
-                    if (!(attributesToKeepOrUpdate[it.key] instanceof List)) {
-                        attributesToKeepOrUpdate[it.key] = [attributesToKeepOrUpdate[it.key]]
-                    }
-                    HashSet<CaseInsensitiveString> set = new HashSet<CaseInsensitiveString>(((List) attributesToKeepOrUpdate[it.key]).collect { new CaseInsensitiveString(it.toString().trim()) })
-                    if (it.value instanceof List) {
-                        set.addAll(((List) it.value).collect { new CaseInsensitiveString(it.toString().trim()) })
-                    } else {
-                        set.add(new CaseInsensitiveString(it.value.toString().trim()))
-                    }
-                    attributesToKeepOrUpdate[it.key] = new ArrayList<String>(set*.toString())
-                } else {
-                    // insert
-                    attributesToKeepOrUpdate[it.key] = it.value
-                }
             }
 
             Map<String, Object> changedAttributes = attributesToKeepOrUpdate - oldAttributeMap
@@ -578,9 +669,13 @@ class LdapConnector implements Connector {
      * @param dn Distinguished name of object being created
      * @param attributeMap Attributes for the object where the keys in the
      *        map are attribute names.
+     * @returns The just-inserted globally unique identifier, if it could be
+     *          determined.  It's not guaranteed this will always return
+     *          non-null on a successful insert.  In other words, null does
+     *          not indicate a failed insert.
      * @throws LdapConnectorException If an error occurs
      */
-    void insert(
+    Object insert(
             String eventId,
             LdapObjectDefinition objectDef,
             LdapCallbackContext context,
@@ -590,19 +685,9 @@ class LdapConnector implements Connector {
     ) throws LdapConnectorException {
         Throwable exception
         Map<String, Object> convertedNewAttributeMap = null
-        Map<String, Object> convertedUpdateOnlyAttributeMap = (objectDef.updateOnlyAttributeNames ? [:] : null)
         Object directoryUniqueIdentifier = null
         try {
             convertedNewAttributeMap = convertCallerProvidedMap(attributeMap)
-
-            // Remove update-only attributes from the map, since we're about
-            // to insert.
-            objectDef.updateOnlyAttributeNames?.each {
-                if (convertedNewAttributeMap.containsKey(it)) {
-                    convertedUpdateOnlyAttributeMap[it] = convertedNewAttributeMap[it]
-                    convertedNewAttributeMap.remove(it)
-                }
-            }
 
             // Spring method naming is a little confusing.  Spring uses the
             // word "bind" and "rebind" to mean "create" and "update." In
@@ -617,7 +702,9 @@ class LdapConnector implements Connector {
                 if (!directoryUniqueIdentifier) {
                     log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just inserted entry of $dn")
                 }
+                return directoryUniqueIdentifier
             }
+            return null
         }
         catch (Throwable t) {
             exception = t
@@ -647,17 +734,6 @@ class LdapConnector implements Connector {
                         globallyUniqueIdentifier: directoryUniqueIdentifier
                 ))
             }
-        }
-
-        if (convertedUpdateOnlyAttributeMap) {
-            // Since there are update-only attributes, we do a subsequent
-            // update after the insert.
-            convertedUpdateOnlyAttributeMap.dn = dn
-            convertedUpdateOnlyAttributeMap[objectDef.primaryKeyAttributeName] = convertedNewAttributeMap[objectDef.primaryKeyAttributeName]
-            if (directoryUniqueIdentifier) {
-                convertedUpdateOnlyAttributeMap[objectDef.globallyUniqueIdentifierAttributeName] = directoryUniqueIdentifier
-            }
-            persist(eventId, objectDef, context, convertedUpdateOnlyAttributeMap, false)
         }
     }
 
@@ -885,9 +961,37 @@ class LdapConnector implements Connector {
         }
 
         // (optional) DN
-        String dn = attrMapCopy.dn
-        // Remove the dn from the object -- not an actual attribute
-        attrMapCopy.remove("dn")
+        String dnNotConditional = attrMapCopy.dn
+        if (dnNotConditional != null) {
+            // Remove the dn from the object -- not an actual attribute
+            attrMapCopy.remove("dn")
+        }
+
+        String dnOnCreate = attrMapCopy["dn.ONCREATE"]
+        if (dnOnCreate != null) {
+            attrMapCopy.remove("dn.ONCREATE")
+        }
+        if (dnOnCreate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONCREATE")) {
+            throw new LdapConnectorException("dn.ONCREATE is provided but it is not listed in dynamicAttributeNames in the object definition")
+        }
+
+        String dnOnUpdate = attrMapCopy["dn.ONUPDATE"]
+        if (dnOnUpdate != null) {
+            attrMapCopy.remove("dn.ONUPDATE")
+        }
+        if (dnOnUpdate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONUPDATE")) {
+            throw new LdapConnectorException("dn.ONUPDATE is provided but it is not listed in dynamicAttributeNames in the object definition")
+        }
+
+        if (dnOnCreate && dnOnUpdate) {
+            throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE is allowed: provide only one of these")
+        }
+        String conditionalDn = dnOnUpdate ?: dnOnCreate
+
+        if (dnNotConditional && conditionalDn) {
+            throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE or dn is allowed: provide only one of these")
+        }
+        String dn = conditionalDn ?: dnNotConditional
 
         boolean isModified = false
         boolean wasRenamed = false
@@ -908,7 +1012,63 @@ class LdapConnector implements Connector {
                 }
             }
 
-            boolean renamingEnabled = !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains("dn")
+            // renaming is only disabled when neither dn.ONUPDATE nor dn
+            // exists in the attribute map.
+            boolean renamingEnabled = dnOnUpdate || dnNotConditional
+
+            // Deal with dynamic attributes
+            ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
+                // everything before the last dot is the attribute name and
+                // everything after the last dot is the dynamic callback
+                // indicator
+                String attributeName = attrNameAndIndicator.substring(0, attrNameAndIndicator.lastIndexOf('.'))
+                String dynamicCallbackIndicator = attrNameAndIndicator.substring(attributeName.length() + 1)
+
+                Object dynamicValueTemplate = attrMapCopy[attrNameAndIndicator]
+                attrMapCopy.remove(attrNameAndIndicator)
+
+                if (dynamicValueTemplate != null) {
+                    Object existingAttributeValue = null
+                    Attribute existingAttribute = null
+                    try {
+                        existingAttribute = (existingEntry ? existingEntry.attributes?.get(attributeName) : null)
+                    }
+                    catch (javax.naming.NameNotFoundException ignored) {
+                        // no-op
+                    }
+                    if (existingAttribute) {
+                        existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
+                    }
+
+                    LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
+                    if (!callback) {
+                        throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
+                    }
+                    LdapDynamicAttributeCallbackResult result = callback.attributeValue(
+                            eventId,
+                            (LdapObjectDefinition) objectDef,
+                            (LdapCallbackContext) context,
+                            foundObjectMethod,
+                            pkey,
+                            dn,
+                            attributeName,
+                            existingAttributeValue,
+                            dynamicCallbackIndicator,
+                            dynamicValueTemplate
+                    )
+
+                    if (result) {
+                        // a null attributeValue will result in attribute
+                        // removal
+                        attrMapCopy[attributeName] = result.attributeValue
+                    } else {
+                        // Don't modify: The attribute name shouldn't be in
+                        // the map, but ust in case it is, remove it so we
+                        // leave it unchanged downstream.
+                        attrMapCopy.remove(attributeName)
+                    }
+                }
+            }
 
             if (existingEntry) {
                 // Already exists -- update
@@ -932,21 +1092,6 @@ class LdapConnector implements Connector {
                     wasRenamed = true
                 }
 
-                Map<String, Object> newReplaceAttributeMap = new LinkedHashMap<String, Object>((Map<String, Object>) attrMapCopy.findAll {
-                    !((LdapObjectDefinition) objectDef).insertOnlyAttributeNames?.contains(it.key)
-                })
-                Map<String, List<Object>> newAppendOnlyAttributeMap = [:]
-                ((LdapObjectDefinition) objectDef).appendOnlyAttributeNames.each { String attrName ->
-                    if (newReplaceAttributeMap.containsKey(attrName)) {
-                        if (newReplaceAttributeMap[attrName] instanceof List) {
-                            newAppendOnlyAttributeMap[attrName] = (List) newReplaceAttributeMap[attrName]
-                        } else {
-                            newAppendOnlyAttributeMap[attrName] = [newReplaceAttributeMap[attrName]]
-                        }
-                        newReplaceAttributeMap.remove(attrName)
-                    }
-                }
-
                 if (!existingEntry.updateMode) {
                     existingEntry.updateMode = true
                 }
@@ -959,8 +1104,7 @@ class LdapConnector implements Connector {
                         pkey,
                         existingEntry,
                         existingEntry.dn.toString(),
-                        newReplaceAttributeMap,
-                        newAppendOnlyAttributeMap
+                        attrMapCopy
                 )) {
                     isModified = true
                 }
@@ -1012,8 +1156,24 @@ class LdapConnector implements Connector {
                 if (!dn) {
                     throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
                 }
-                insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
+                Object insertedGloballyUniqId = insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
                 isModified = true
+
+                boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).dynamicAttributeNames.any {
+                    it.endsWith(".ONUPDATE")
+                }
+                if (hasUpdateOnlyAttributes) {
+                    // Since there are update-only attributes, we do a subsequent
+                    // update after the insert, but only if we found the object
+                    // we just inserted.
+                    if (insertedGloballyUniqId) {
+                        LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
+                        attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
+                        persist(eventId, objectDef, context, attrMapForUpdate, false)
+                    } else {
+                        log.warn("pkey $pkey has ONUPDATE attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
+                    }
+                }
             }
         } else {
             // is a deletion for the DN and/or pkey
@@ -1098,7 +1258,7 @@ class LdapConnector implements Connector {
      * @param map
      * @return
      */
-    private Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
+    protected Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
         return map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
             [it.key, (it.value instanceof List ? convertCallerProvidedList((List) it.value) : convertCallerProvidedValue(it.value))]
         }
@@ -1111,7 +1271,7 @@ class LdapConnector implements Connector {
      * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
-    private Object convertCallerProvidedList(List list) {
+    protected Object convertCallerProvidedList(List list) {
         if (list.size() == 1) {
             return convertCallerProvidedValue(list.first())
         } else {
@@ -1126,7 +1286,7 @@ class LdapConnector implements Connector {
      * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
-    private Object convertCallerProvidedValue(Object value) {
+    protected Object convertCallerProvidedValue(Object value) {
         if (value instanceof String || value instanceof Number || value instanceof Boolean) {
             // Directory servers interpret numbers and booleans as strings,
             // so we use toString()

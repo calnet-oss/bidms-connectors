@@ -57,44 +57,23 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private boolean removeDuplicatePrimaryKeys;
 
     /**
-     * An array of attribute names, which must be multi-value attributes, to
-     * append to rather than overwrite when updating. A common example would
-     * be objectClass.
+     * An array of attribute names (with their dynamic indicators) for which
+     * the values of these attributes are dynamically determined by a
+     * callback that is assigned to the dynamic indicator.
+     * <p/>
+     * The strings in this array have the following naming convention:
+     * <code>attributeName.indicator</code> where <i>attributeName</i> is the
+     * attribute in the downstream system and <i>indicator</i> is a string
+     * that identifies which callback to use.  The callbacks are configured
+     * in the connector's dynamicAttributeCallbacks map, where the map key is
+     * <i>attributeName.indicator</i> or <i>indicator</i> (for an indicator
+     * that applies to all attributes) and the value is the instance of the
+     * callback.
+     * <p/>
+     * 'dn.ONCREATE' may be included, which is a special case that will
+     * disable renaming of the object.
      */
-    private String[] appendOnlyAttributeNames;
-
-    /**
-     * An array of attribute names indicating attributes that should only be
-     * inserted and should be left alone during updates.  'dn' may be
-     * included, which is a special case that will disable renaming the
-     * object.
-     */
-    private String[] insertOnlyAttributeNames;
-
-    /**
-     * An array of attribute names indicating attributes that should only be
-     * updated and should be left out during inserts.
-     */
-    private String[] updateOnlyAttributeNames;
-
-    public UidObjectDefinition() {
-    }
-
-    public UidObjectDefinition(
-            String objectClass,
-            boolean keepExistingAttributesWhenUpdating,
-            boolean removeDuplicatePrimaryKeys,
-            String[] appendOnlyAttributeNames,
-            String[] insertOnlyAttributeNames,
-            String[] updateOnlyAttributeNames
-    ) {
-        this.objectClass = objectClass;
-        this.keepExistingAttributesWhenUpdating = keepExistingAttributesWhenUpdating;
-        this.removeDuplicatePrimaryKeys = removeDuplicatePrimaryKeys;
-        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
-        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
-    }
+    private String[] dynamicAttributeNames;
 
     /**
      * The globally unique identifier attribute in the directory, which is
@@ -247,62 +226,23 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     }
 
     /**
-     * @return A list of attribute names, which must be multi-value
-     * attributes, to append to rather than overwrite when updating.
+     * @return An array of attribute names (with their dynamic indicators)
+     * for which the values of these attributes are dynamically determined by
+     * a callback that is assigned to the dynamic indicator.
      */
     @Override
-    public String[] getAppendOnlyAttributeNames() {
-        return appendOnlyAttributeNames;
+    public String[] getDynamicAttributeNames() {
+        return dynamicAttributeNames;
     }
 
     /**
-     * @param appendOnlyAttributeNames A list of attribute names, which must
-     *                                 be multi-value attributes, to append
-     *                                 to rather than overwrite when
-     *                                 updating.
+     * @param dynamicAttributeNames An array of attribute names (with their
+     *                              dynamic indicators) for which the values
+     *                              of these attributes are dynamically
+     *                              determined by a callback that is assigned
+     *                              to the dynamic indicator.
      */
-    public void setAppendOnlyAttributeNames(String[] appendOnlyAttributeNames) {
-        this.appendOnlyAttributeNames = appendOnlyAttributeNames;
-    }
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be inserted and should be left alone during updates.  'dn' may be
-     * included, which is a special case that will disable renaming the
-     * object.
-     */
-    public String[] getInsertOnlyAttributeNames() {
-        return insertOnlyAttributeNames;
-    }
-
-    /**
-     * @param insertOnlyAttributeNames An array of attribute names indicating
-     *                                 attributes that should only be
-     *                                 inserted and should be left alone
-     *                                 during updates.  'dn' may be included,
-     *                                 which is a special case that will
-     *                                 disable renaming the object.
-     */
-    public void setInsertOnlyAttributeNames(String[] insertOnlyAttributeNames) {
-        this.insertOnlyAttributeNames = insertOnlyAttributeNames;
-    }
-
-    /**
-     * @return An array of attribute names indicating attributes that should
-     * only be updated and should be left out during inserts.
-     */
-    @Override
-    public String[] getUpdateOnlyAttributeNames() {
-        return updateOnlyAttributeNames;
-    }
-
-    /**
-     * @param updateOnlyAttributeNames An array of attribute names indicating
-     *                                 attributes that should only be updated
-     *                                 and should be left out during
-     *                                 inserts.
-     */
-    public void setUpdateOnlyAttributeNames(String[] updateOnlyAttributeNames) {
-        this.updateOnlyAttributeNames = updateOnlyAttributeNames;
+    public void setDynamicAttributeNames(String[] dynamicAttributeNames) {
+        this.dynamicAttributeNames = dynamicAttributeNames;
     }
 }

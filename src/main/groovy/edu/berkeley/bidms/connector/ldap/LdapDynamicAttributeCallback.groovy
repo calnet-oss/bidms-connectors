@@ -27,50 +27,26 @@
 
 package edu.berkeley.bidms.connector.ldap
 
-import org.springframework.ldap.core.ContextMapper
-import org.springframework.ldap.core.DirContextAdapter
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 
-import javax.naming.NamingException
-import javax.naming.directory.Attribute
-
-/**
- * Converts the attributes of a search result to a Map
- */
-class ToMapContextMapper implements ContextMapper<Map<String, Object>> {
-    @Override
-    Map<String, Object> mapFromContext(Object ctx) throws NamingException {
-        DirContextAdapter searchResult
-        if (ctx instanceof DirContextAdapter) {
-            searchResult = (DirContextAdapter) ctx
-        } else {
-            throw new RuntimeException("Not supported for ctx type ${ctx?.getClass()?.name}.  Only DirContextAdapter objects are supported.")
-        }
-
-        Map<String, Object> result = [:]
-        searchResult.attributes.all.each { Attribute attr ->
-            if(attr.size() > 0) {
-                result.put(attr.ID, convertAttribute(attr))
-            }
-        }
-
-        // dn is added as an extra pseudo-attribute
-        result.put("dn", searchResult.dn.toString())
-
-        return result
-    }
-
-    static Object convertAttribute(Attribute attr) {
-        if (attr.size() == 1) {
-            return attr.get()
-        } else if (attr.size() > 1) {
-            def list = []
-            attr.all.each {
-                list.add(it)
-            }
-            return list
-        }
-        else {
-            throw new RuntimeException("attr size is 0")
-        }
-    }
+interface LdapDynamicAttributeCallback {
+    /**
+     * @return A LdapDynamicAttributeCallbackResult instance that contains
+     * the attributeValue or null if the attribute is not to be modified. 
+     * If you wish to remove the attribute, return an instance of
+     * LdapDynamicAttributeCallbackResult where the attributeValue is set to
+     * null.
+     */
+    LdapDynamicAttributeCallbackResult attributeValue(
+            String eventId,
+            LdapObjectDefinition objectDef,
+            LdapCallbackContext context,
+            FoundObjectMethod foundObjectMethod,
+            String pkey,
+            String dn,
+            String attributeName,
+            Object existingValue,
+            String dynamicCallbackIndicator,
+            Object dynamicValueTemplate
+    )
 }
