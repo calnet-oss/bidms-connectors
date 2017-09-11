@@ -1,4 +1,4 @@
-version "0.24-SNAPSHOT"
+version "0.24.1-SNAPSHOT"
 group "edu.berkeley.calnet.groovy.libs"
 
 apply plugin: "groovy"

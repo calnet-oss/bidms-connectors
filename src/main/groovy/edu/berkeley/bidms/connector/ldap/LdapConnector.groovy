@@ -166,6 +166,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String,Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -190,6 +191,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String,Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -214,6 +216,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String,Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -1022,6 +1025,7 @@ class LdapConnector implements Connector {
             boolean renamingEnabled = dnOnUpdate || dnNotConditional
 
             // Deal with dynamic attributes
+            Map<String,Object> existingAttrMapForDynamicAttributeCallbacks = null
             ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
                 // everything before the last dot is the attribute name and
                 // everything after the last dot is the dynamic callback
@@ -1045,6 +1049,9 @@ class LdapConnector implements Connector {
                         existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
                     }
 
+                    if(existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
+                        existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
+                    }
                     LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
                     if (!callback) {
                         throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
@@ -1057,6 +1064,7 @@ class LdapConnector implements Connector {
                             pkey,
                             dn,
                             attributeName,
+                            existingAttrMapForDynamicAttributeCallbacks,
                             existingAttributeValue,
                             dynamicCallbackIndicator,
                             dynamicValueTemplate
