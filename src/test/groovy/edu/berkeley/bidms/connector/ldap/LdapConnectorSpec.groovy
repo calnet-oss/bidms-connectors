@@ -47,6 +47,7 @@ import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
 import org.springframework.ldap.query.LdapQuery
+import org.springframework.ldap.transaction.compensating.manager.TransactionAwareContextSourceProxy
 import software.apacheds.embedded.EmbeddedLdapServer
 import spock.lang.Shared
 import spock.lang.Specification
@@ -106,7 +107,7 @@ class LdapConnectorSpec extends Specification {
             url = "ldap://localhost:10389"
         }
         ldapContextSource.afterPropertiesSet()
-        this.ldapTemplate = new LdapTemplate(ldapContextSource)
+        this.ldapTemplate = new LdapTemplate(new TransactionAwareContextSourceProxy(ldapContextSource))
         ldapTemplate.afterPropertiesSet()
     }
 

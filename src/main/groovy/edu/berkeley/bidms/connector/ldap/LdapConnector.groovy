@@ -55,6 +55,7 @@ import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
+import org.springframework.transaction.annotation.Transactional
 
 import javax.naming.Name
 import javax.naming.directory.Attribute
@@ -68,6 +69,10 @@ import javax.naming.directory.ModificationItem
  * Connector for LDAP and Active Directory directory servers.
  */
 @Slf4j
+// LDAP isn't transactional but this allows the same directory connection to
+// be re-used for LdapTemplation operations when
+// TransactionAwareContextSourceProxy is in use by the LdapTemplate.
+@Transactional
 class LdapConnector implements Connector {
 
     LdapTemplate ldapTemplate
