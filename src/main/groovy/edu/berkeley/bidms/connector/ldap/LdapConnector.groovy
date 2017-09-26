@@ -1096,10 +1096,10 @@ class LdapConnector implements Connector {
                         existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
                     }
                     catch (NameNotFoundException ignored) {
-                        // no-op
+                        existingEntry = null
                     }
                     if (!existingEntry) {
-                        throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN")
+                        throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN from the old $existingDn")
                     }
                     isModified = true
                     wasRenamed = true
