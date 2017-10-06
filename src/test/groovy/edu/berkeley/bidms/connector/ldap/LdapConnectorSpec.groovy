@@ -589,6 +589,11 @@ class LdapConnectorSpec extends Specification {
             assert ((DirContextAdapter) ldapTemplate.lookup("uid=$uid,ou=expired people,dc=berkeley,dc=edu")).getStringAttribute("description") == "initial test"
         }
 
+        // a subordinate is a leaf of the DN
+        if (createSubordinate) {
+            addTestEntry("uid=$uid,$dn", uid)
+        }
+
         boolean wasDeleted = ldapConnector.persist(eventId, objDef, null, [dn: delDn, uid: delUid], true)
 
         Map<String, Object> retrievedByDn = lookupDn(dn)
@@ -612,15 +617,16 @@ class LdapConnectorSpec extends Specification {
         (deletes ? wasDeleted : !wasDeleted)
 
         where:
-        description                                               | removeDupePkeys | createDupe | delDn                                | delUid   | remainingDN | remainingUids | deletes
-        "delete by DN"                                            | true            | false      | "uid=1,ou=people,dc=berkeley,dc=edu" | null     | false       | 0             | 1
-        "delete by uid"                                           | true            | false      | null                                 | "1"      | false       | 0             | 1
-        "delete all by uid"                                       | true            | true       | null                                 | "1"      | false       | 0             | 2
-        "delete all by dn and uid"                                | true            | true       | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      | false       | 0             | 2
-        "delete by dn but not uids because dupe removal disabled" | false           | true       | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      | false       | 1             | 1
-        "no delete by uid because dupe removal disabled"          | false           | true       | null                                 | "1"      | true        | 2             | 0
-        "attempt deletion of non-existant DN"                     | true            | false      | "uid=foobar,dc=berkeley,dc=edu"      | null     | true        | 1             | 0
-        "attempt deletion of non-existant uid"                    | true            | false      | null                                 | "foobar" | true        | 1             | 0
+        description                                               | removeDupePkeys | createDupe | createSubordinate | delDn                                | delUid   || remainingDN | remainingUids | deletes
+        "delete by DN"                                            | true            | false      | false             | "uid=1,ou=people,dc=berkeley,dc=edu" | null     || false       | 0             | 1
+        "delete by uid"                                           | true            | false      | false             | null                                 | "1"      || false       | 0             | 1
+        "delete all by uid"                                       | true            | true       | false             | null                                 | "1"      || false       | 0             | 2
+        "delete all by dn and uid"                                | true            | true       | false             | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      || false       | 0             | 2
+        "delete by dn but not uids because dupe removal disabled" | false           | true       | false             | "uid=1,ou=people,dc=berkeley,dc=edu" | "1"      || false       | 1             | 1
+        "no delete by uid because dupe removal disabled"          | false           | true       | false             | null                                 | "1"      || true        | 2             | 0
+        "attempt deletion of non-existant DN"                     | true            | false      | false             | "uid=foobar,dc=berkeley,dc=edu"      | null     || true        | 1             | 0
+        "attempt deletion of non-existant uid"                    | true            | false      | false             | null                                 | "foobar" || true        | 1             | 0
+        "delete by DN when there's a subordinate"                 | true            | false      | true              | "uid=1,ou=people,dc=berkeley,dc=edu" | null     || false       | 0             | 2
     }
 
     void "test updates without specifying a DN"() {
@@ -688,7 +694,7 @@ class LdapConnectorSpec extends Specification {
                     String pkey,
                     String _dn,
                     String attributeName,
-                    Map<String,Object> existingAttributeMap,
+                    Map<String, Object> existingAttributeMap,
                     Object existingValue,
                     String dynamicCallbackIndicator,
                     Object dynamicValueTemplate

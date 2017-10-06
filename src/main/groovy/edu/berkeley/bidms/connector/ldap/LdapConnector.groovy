@@ -54,6 +54,8 @@ import org.springframework.ldap.core.ContextMapper
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.query.LdapQuery
+import org.springframework.ldap.query.LdapQueryBuilder
+import org.springframework.ldap.query.SearchScope
 import org.springframework.ldap.support.LdapNameBuilder
 import org.springframework.transaction.annotation.Transactional
 
@@ -166,7 +168,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
-                        Map<String,Object> existingAttributeMap,
+                        Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -191,7 +193,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
-                        Map<String,Object> existingAttributeMap,
+                        Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -216,7 +218,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
-                        Map<String,Object> existingAttributeMap,
+                        Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
                         Object dynamicValueTemplate
@@ -429,7 +431,25 @@ class LdapConnector implements Connector {
     ) throws LdapConnectorException {
         Throwable exception
         try {
-            ldapTemplate.unbind(buildDnName(dn))
+            Name dnToDelete = buildDnName(dn)
+
+            // Recursively delete subordinates (leaves) first.  We have to search for them.
+            LdapQuery subordinateQuery = LdapQueryBuilder.query()
+                    .base(dnToDelete)
+                    .searchScope(SearchScope.ONELEVEL)
+                    .where("objectClass").isPresent()
+            List<DirContextAdapter> subordinates = ldapTemplate.search(
+                    subordinateQuery,
+                    toDirContextAdapterContextMapper
+            )
+            subordinates.each { DirContextAdapter foundSubordinate ->
+                if (foundSubordinate.dn.toString() != dnToDelete.toString()) {
+                    delete(eventId, objectDef, context, pkey, foundSubordinate.dn.toString())
+                }
+            }
+
+            // now that the subordinates are deleted, delete the DN
+            ldapTemplate.unbind(dnToDelete)
         }
         catch (Throwable t) {
             exception = t
@@ -1025,7 +1045,7 @@ class LdapConnector implements Connector {
             boolean renamingEnabled = dnOnUpdate || dnNotConditional
 
             // Deal with dynamic attributes
-            Map<String,Object> existingAttrMapForDynamicAttributeCallbacks = null
+            Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
             ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
                 // everything before the last dot is the attribute name and
                 // everything after the last dot is the dynamic callback
@@ -1049,7 +1069,7 @@ class LdapConnector implements Connector {
                         existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
                     }
 
-                    if(existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
+                    if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
                         existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
                     }
                     LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
