@@ -62,6 +62,9 @@ publishing {
     publications {
         maven(MavenPublication) {
             from components.java
+            artifactId project.name
+            version projectVersion
+            group projectGroup
             artifact sourceJar { classifier "sources" }
             artifact javadocJar { classifier "javadoc" }
         }
