@@ -1,5 +1,5 @@
-version "0.25-SNAPSHOT"
-group "edu.berkeley.calnet.groovy.libs"
+version projectVersion
+group projectGroup
 
 apply plugin: "groovy"
 apply plugin: "maven-publish"
