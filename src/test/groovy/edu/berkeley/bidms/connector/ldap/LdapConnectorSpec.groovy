@@ -354,6 +354,7 @@ class LdapConnectorSpec extends Specification {
             }
             assert msg.newDn == dn
             assert msg.globallyUniqueIdentifier
+            assert msg.wasRenamed == (renameOldDn != null)
         }
 
         where:
@@ -801,9 +802,10 @@ class LdapConnectorSpec extends Specification {
             assert msg.eventId == eventId
             assert msg.objectDef == objDef
             assert msg.pkey == "1"
-            assert msg.oldDn == "uid=1,ou=expired people,dc=berkeley,dc=edu" // requested dn
-            assert msg.newDn == "uid=1,ou=people,dc=berkeley,dc=edu" // actual dn
+            assert msg.oldDn == "uid=1,ou=people,dc=berkeley,dc=edu" // actual dn
+            assert msg.newDn == "uid=1,ou=expired people,dc=berkeley,dc=edu" // requested dn
             assert msg.globallyUniqueIdentifier
+            assert !msg.wasRenamed
 
         }
     }

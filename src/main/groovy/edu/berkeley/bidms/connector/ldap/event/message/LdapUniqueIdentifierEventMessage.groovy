@@ -49,5 +49,6 @@ class LdapUniqueIdentifierEventMessage implements LdapEventMessage {
     String oldDn
     String newDn
     Object globallyUniqueIdentifier
+    boolean wasRenamed
     Throwable exception
 }

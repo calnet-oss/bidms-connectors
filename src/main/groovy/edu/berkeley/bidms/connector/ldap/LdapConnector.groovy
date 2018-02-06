@@ -531,7 +531,8 @@ class LdapConnector implements Connector {
                         pkey: pkey,
                         oldDn: oldDn,
                         newDn: newDn,
-                        globallyUniqueIdentifier: directoryUniqueIdentifier
+                        globallyUniqueIdentifier: directoryUniqueIdentifier,
+                        wasRenamed: true
                 ))
             }
         }
@@ -759,7 +760,8 @@ class LdapConnector implements Connector {
                         context: context,
                         pkey: pkey,
                         newDn: dn,
-                        globallyUniqueIdentifier: directoryUniqueIdentifier
+                        globallyUniqueIdentifier: directoryUniqueIdentifier,
+                        wasRenamed: false
                 ))
             }
         }
@@ -1177,9 +1179,10 @@ class LdapConnector implements Connector {
                                     objectDef: (LdapObjectDefinition) objectDef,
                                     context: (LdapCallbackContext) context,
                                     pkey: pkey,
-                                    oldDn: dn,
-                                    newDn: existingEntry.dn.toString(),
-                                    globallyUniqueIdentifier: directoryUniqueIdentifier
+                                    oldDn: existingEntry.dn.toString(),
+                                    newDn: dn,
+                                    globallyUniqueIdentifier: directoryUniqueIdentifier,
+                                    wasRenamed: wasRenamed
                             ))
                         }
                     }
