@@ -45,6 +45,7 @@ interface LdapDynamicAttributeCallback {
             String pkey,
             String dn,
             String attributeName,
+            Map<String,Object> newAttributeMap,
             Map<String,Object> existingAttributeMap,
             Object existingValue,
             String dynamicCallbackIndicator,

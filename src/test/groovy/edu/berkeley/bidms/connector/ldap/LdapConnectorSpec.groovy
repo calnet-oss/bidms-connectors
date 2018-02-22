@@ -695,6 +695,7 @@ class LdapConnectorSpec extends Specification {
                     String pkey,
                     String _dn,
                     String attributeName,
+                    Map<String, Object> newAttributeMap,
                     Map<String, Object> existingAttributeMap,
                     Object existingValue,
                     String dynamicCallbackIndicator,

@@ -168,6 +168,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String, Object> newAttributeMap,
                         Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
@@ -193,6 +194,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String, Object> newAttributeMap,
                         Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
@@ -218,6 +220,7 @@ class LdapConnector implements Connector {
                         String pkey,
                         String _dn,
                         String attributeName,
+                        Map<String, Object> newAttributeMap,
                         Map<String, Object> existingAttributeMap,
                         Object existingValue,
                         String dynamicCallbackIndicator,
@@ -1086,6 +1089,7 @@ class LdapConnector implements Connector {
                             pkey,
                             dn,
                             attributeName,
+                            attrMap,
                             existingAttrMapForDynamicAttributeCallbacks,
                             existingAttributeValue,
                             dynamicCallbackIndicator,
@@ -1327,6 +1331,9 @@ class LdapConnector implements Connector {
             // Directory servers interpret numbers and booleans as strings,
             // so we use toString()
             return value.toString()
+        } else if (value instanceof byte[]) {
+            // an example of using bytes for an attribute: AD unicodePwd
+            return value;
         } else if (value == null) {
             return null
         } else {
