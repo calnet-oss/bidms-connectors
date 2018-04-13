@@ -41,20 +41,39 @@ import java.util.regex.Pattern
 class LdapConnectorException extends ConnectorException {
     private Pattern ldapErrorCodePattern = Pattern.compile("error code (\\d+)")
 
-    Integer getLdapErrorCode() {
-        NamingException namingException = null
-        Throwable _cause = cause
-        while (_cause && !(_cause instanceof NamingException)) {
-            _cause = _cause.cause
+    private NamingException _namingException
+    private Integer ldapErrorCode
+
+    private NamingException getNamingException() {
+        if (_namingException == null) {
+            Throwable _cause = cause
+            while (_cause && !(_cause instanceof NamingException)) {
+                _cause = _cause.cause
+            }
+            if (_cause instanceof NamingException) {
+                this._namingException = _cause
+            }
         }
-        if (cause instanceof NamingException && cause.message) {
+        return _namingException
+    }
+
+    Integer getLdapErrorCode() {
+        if (ldapErrorCode == null && getNamingException() && getNamingException().message) {
             // Unfortunately, Java doesn't provide any way to extract the
             // LDAP error code from the NamingException other than to parse
             // the exception string.
             Matcher m = ldapErrorCodePattern.matcher(cause.message)
             if (m.find()) {
-                return m.group(1) as Integer
+                this.ldapErrorCode = m.group(1) as Integer
             }
+        }
+
+        return ldapErrorCode
+    }
+
+    String getLdapErrorMessage() {
+        if (getNamingException()) {
+            return getNamingException().message
         }
         return null
     }

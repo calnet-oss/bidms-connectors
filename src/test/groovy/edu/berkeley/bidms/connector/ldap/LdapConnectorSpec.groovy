@@ -1239,5 +1239,6 @@ class LdapConnectorSpec extends Specification {
 
         then:
         exception.ldapErrorCode == 16 // 16 is no such attribute
+        exception.ldapErrorMessage.startsWith("[LDAP: error code 16 - NO_SUCH_ATTRIBUTE: failed for MessageType : MODIFY_REQUEST")
     }
 }
