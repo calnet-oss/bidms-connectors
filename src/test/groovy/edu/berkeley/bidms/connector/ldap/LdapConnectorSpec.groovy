@@ -1192,7 +1192,7 @@ class LdapConnectorSpec extends Specification {
         when:
         LdapConnectorException exception = null
         try {
-            ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
+            ldapConnector.setAttribute(eventId, objDef, null, dn, uid, null, "description", "updated")
         }
         catch (LdapConnectorException e) {
             exception = e
@@ -1200,5 +1200,44 @@ class LdapConnectorSpec extends Specification {
 
         then:
         exception.cause instanceof ConnectorObjectNotFoundException
+    }
+
+    void "test attempted setAttribute() on a nonexistent attribute which also tests parsing of the ldap error code"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true
+        )
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when:
+        // create
+        addOu("people")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn         : dn,
+                uid        : uid,
+                objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
+                sn         : "User",
+                cn         : "Test User",
+                description: "initial test"], false)
+
+        and:
+        LdapConnectorException exception = null
+        try {
+            ldapConnector.setAttribute(eventId, objDef, null, dn, uid, null, "bogus", "bogus")
+        }
+        catch (LdapConnectorException e) {
+            exception = e
+        }
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteOu("people")
+
+        then:
+        exception.ldapErrorCode == 16 // 16 is no such attribute
     }
 }
