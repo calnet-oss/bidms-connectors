@@ -30,9 +30,51 @@ package edu.berkeley.bidms.connector.ldap
 import edu.berkeley.bidms.connector.ConnectorException
 import groovy.transform.InheritConstructors
 
+import javax.naming.NamingException
+import java.util.regex.Matcher
+import java.util.regex.Pattern
+
 /**
  * Exception thrown within LdapConnector functionality.
  */
 @InheritConstructors
-class LdapConnectorException extends ConnectorException{
+class LdapConnectorException extends ConnectorException {
+    private Pattern ldapErrorCodePattern = Pattern.compile("error code (\\d+)")
+
+    private NamingException _namingException
+    private Integer ldapErrorCode
+
+    private NamingException getNamingException() {
+        if (_namingException == null) {
+            Throwable _cause = cause
+            while (_cause && !(_cause instanceof NamingException)) {
+                _cause = _cause.cause
+            }
+            if (_cause instanceof NamingException) {
+                this._namingException = _cause
+            }
+        }
+        return _namingException
+    }
+
+    Integer getLdapErrorCode() {
+        if (ldapErrorCode == null && getNamingException() && getNamingException().message) {
+            // Unfortunately, Java doesn't provide any way to extract the
+            // LDAP error code from the NamingException other than to parse
+            // the exception string.
+            Matcher m = ldapErrorCodePattern.matcher(cause.message)
+            if (m.find()) {
+                this.ldapErrorCode = m.group(1) as Integer
+            }
+        }
+
+        return ldapErrorCode
+    }
+
+    String getLdapErrorMessage() {
+        if (getNamingException()) {
+            return getNamingException().message
+        }
+        return null
+    }
 }
