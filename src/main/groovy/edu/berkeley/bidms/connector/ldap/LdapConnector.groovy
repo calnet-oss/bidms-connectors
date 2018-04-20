@@ -1041,12 +1041,13 @@ class LdapConnector implements Connector {
         Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
 
         if (!isDelete || dnDynamic) {
-            matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, pkey, uniqueIdentifier)
+            // If dn.DYNAMIC is set, then primary key/unique identifier must be used to retrieve the object.
+            matchingEntryResult = findMatchingEntry(eventId, objectDef, context, (!dnDynamic ? dn : null), pkey, uniqueIdentifier)
             existingEntry = matchingEntryResult.entry
             foundObjectMethod = matchingEntryResult.foundObjectMethod
 
             // For dn.DYNAMIC, need to execute the callback early to get the real DN value.
-            if(dnDynamic) {
+            if (dnDynamic) {
                 String existingDn = (existingEntry ? existingEntry.getDn().toString() : null)
                 if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
                     existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
