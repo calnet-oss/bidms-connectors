@@ -756,6 +756,90 @@ class LdapConnectorSpec extends Specification {
         "entry updated but only ONCREATE condition is met" | "description.ONCREATE"  | "description.CONDITION" | false           || "initial description"
     }
 
+    @Unroll("dn.DYNAMIC #description")
+    void "test dn.DYNAMIC"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["dn.DYNAMIC"] as String[]
+        )
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+
+        when: "initialize dynamic dn callback"
+        ldapConnector.dynamicAttributeCallbacks["dn.DYNAMIC"] = new LdapDynamicAttributeCallback() {
+            @Override
+            LdapDynamicAttributeCallbackResult attributeValue(
+                    String _eventId,
+                    LdapObjectDefinition objectDef,
+                    LdapCallbackContext context,
+                    FoundObjectMethod foundObjectMethod,
+                    String pkey,
+                    String _dn,
+                    String attributeName,
+                    Map<String, Object> newAttributeMap,
+                    Map<String, Object> existingAttributeMap,
+                    Object existingValue,
+                    String dynamicCallbackIndicator,
+                    Object dynamicValueTemplate
+            ) {
+                return new LdapDynamicAttributeCallbackResult(attributeValue: "${dynamicValueTemplate},dc=berkeley,dc=edu")
+            }
+        }
+
+        and: "create directory entry"
+        addOu("people")
+        addOu("expired")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                "dn.DYNAMIC" : createDnPrefix,
+                uid          : uid,
+                objectClass  : objectClasses,
+                sn           : "User",
+                cn           : "Test User",
+                "description": "initial description"
+        ], false)
+
+        and: "update directory entry, if requested"
+        boolean didUpdate = false
+        if (doUpdate) {
+            didUpdate = ldapConnector.persist(eventId, objDef, null, [
+                    "dn.DYNAMIC" : updateDnPrefix,
+                    uid          : uid,
+                    objectClass  : objectClasses,
+                    "description": "updated description"
+            ], false)
+        }
+
+        and: "retrieve directory entry"
+        List<Map<String, Object>> retrieved = searchForUid(uid)
+
+        and: "cleanup"
+        ldapConnector.dynamicAttributeCallbacks.remove("dn.DYNAMIC")
+        if (doUpdate) {
+            deleteDn("$updateDnPrefix,dc=berkeley,dc=edu")
+        } else {
+            deleteDn("$createDnPrefix,dc=berkeley,dc=edu")
+        }
+        deleteOu("people")
+        deleteOu("expired")
+
+        then:
+        didCreate
+        retrieved.size() == 1
+        retrieved.first().description == exptdDescription
+        retrieved.first().dn == exptdDn
+
+        where:
+        description                            | doUpdate | createDnPrefix    | updateDnPrefix     || exptdDn                               | exptdDescription
+        "create only"                          | false    | "uid=1,ou=people" | "uid=1,ou=people"  || "uid=1,ou=people,dc=berkeley,dc=edu"  | "initial description"
+        "create then update with no DN change" | true     | "uid=1,ou=people" | "uid=1,ou=people"  || "uid=1,ou=people,dc=berkeley,dc=edu"  | "updated description"
+        "create then update with DN change"    | true     | "uid=1,ou=people" | "uid=1,ou=expired" || "uid=1,ou=expired,dc=berkeley,dc=edu" | "updated description"
+
+    }
+
     void "test updates with renaming disabled"() {
         given:
         UidObjectDefinition objDef = new UidObjectDefinition(

@@ -1000,6 +1000,14 @@ class LdapConnector implements Connector {
             attrMapCopy.remove("dn")
         }
 
+        String dnDynamic = attrMapCopy["dn.DYNAMIC"]
+        if (dnDynamic != null) {
+            attrMapCopy.remove("dn.DYNAMIC")
+        }
+        if (dnDynamic && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.DYNAMIC")) {
+            throw new LdapConnectorException("dn.DYNAMIC is provided but it is not listed in dynamicAttributeNames in the object definition")
+        }
+
         String dnOnCreate = attrMapCopy["dn.ONCREATE"]
         if (dnOnCreate != null) {
             attrMapCopy.remove("dn.ONCREATE")
@@ -1019,21 +1027,58 @@ class LdapConnector implements Connector {
         if (dnOnCreate && dnOnUpdate) {
             throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE is allowed: provide only one of these")
         }
-        String conditionalDn = dnOnUpdate ?: dnOnCreate
+        // dn.DYNAMIC trumps dn.UPDATE
+        String conditionalDn = dnDynamic ?: dnOnUpdate ?: dnOnCreate
 
         if (dnNotConditional && conditionalDn) {
-            throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE or dn is allowed: provide only one of these")
+            throw new LdapConnectorException("Only one of dn.DYNAMIC, dn.ONCREATE, dn.ONUPDATE or dn is allowed: provide only one of these")
         }
         String dn = conditionalDn ?: dnNotConditional
+
+        MatchingEntryResult matchingEntryResult = null
+        DirContextAdapter existingEntry = null
+        FoundObjectMethod foundObjectMethod = null
+        Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
+
+        if (!isDelete || dnDynamic) {
+            // If dn.DYNAMIC is set, then primary key/unique identifier must be used to retrieve the object.
+            matchingEntryResult = findMatchingEntry(eventId, objectDef, context, (!dnDynamic ? dn : null), pkey, uniqueIdentifier)
+            existingEntry = matchingEntryResult.entry
+            foundObjectMethod = matchingEntryResult.foundObjectMethod
+
+            // For dn.DYNAMIC, need to execute the callback early to get the real DN value.
+            if (dnDynamic) {
+                String existingDn = (existingEntry ? existingEntry.getDn().toString() : null)
+                if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
+                    existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
+                }
+
+                LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks["dn.DYNAMIC"]
+                if (!callback) {
+                    throw new LdapConnectorException("No callback for dynamic attribute dn.DYNAMIC is set")
+                }
+                LdapDynamicAttributeCallbackResult result = callback.attributeValue(
+                        eventId,
+                        (LdapObjectDefinition) objectDef,
+                        (LdapCallbackContext) context,
+                        foundObjectMethod,
+                        pkey,
+                        null,
+                        "dn",
+                        attrMap,
+                        existingAttrMapForDynamicAttributeCallbacks,
+                        existingDn,
+                        "DYNAMIC",
+                        dn
+                )
+                dn = result.attributeValue as String
+            }
+        }
 
         boolean isModified = false
         boolean wasRenamed = false
 
         if (!isDelete) {
-            MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, pkey, uniqueIdentifier)
-            DirContextAdapter existingEntry = matchingEntryResult.entry
-            FoundObjectMethod foundObjectMethod = matchingEntryResult.foundObjectMethod
-
             if (((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
                 // Delete all the entries that we're not keeping as the
                 // existingEntry
@@ -1045,12 +1090,11 @@ class LdapConnector implements Connector {
                 }
             }
 
-            // renaming is only disabled when neither dn.ONUPDATE nor dn
+            // renaming is only disabled when none of: dn.DYNAMIC, dn.ONUPDATE, dn
             // exists in the attribute map.
-            boolean renamingEnabled = dnOnUpdate || dnNotConditional
+            boolean renamingEnabled = dnDynamic || dnOnUpdate || dnNotConditional
 
             // Deal with dynamic attributes
-            Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
             ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
                 // everything before the last dot is the attribute name and
                 // everything after the last dot is the dynamic callback
@@ -1073,10 +1117,10 @@ class LdapConnector implements Connector {
                     if (existingAttribute) {
                         existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
                     }
-
                     if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
                         existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
                     }
+
                     LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
                     if (!callback) {
                         throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
