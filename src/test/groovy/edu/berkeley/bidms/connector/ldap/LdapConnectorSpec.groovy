@@ -47,6 +47,7 @@ import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
 import org.springframework.ldap.query.LdapQuery
+import org.springframework.ldap.support.LdapNameBuilder
 import org.springframework.ldap.transaction.compensating.manager.TransactionAwareContextSourceProxy
 import software.apacheds.embedded.EmbeddedLdapServer
 import spock.lang.Shared
@@ -54,6 +55,8 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 import javax.naming.Name
+import javax.naming.ldap.LdapName
+import javax.naming.ldap.Rdn
 
 import static org.springframework.ldap.query.LdapQueryBuilder.query
 
@@ -149,6 +152,10 @@ class LdapConnectorSpec extends Specification {
 
     void deleteDn(String dn) {
         ldapTemplate.unbind(ldapConnector.buildDnName(dn))
+    }
+
+    void deleteDn(Name dn) {
+        ldapTemplate.unbind(dn)
     }
 
     List<Map<String, Object>> searchForUid(String uid) {
@@ -693,7 +700,7 @@ class LdapConnectorSpec extends Specification {
                     LdapCallbackContext context,
                     FoundObjectMethod foundObjectMethod,
                     String pkey,
-                    String _dn,
+                    Name _dn,
                     String attributeName,
                     Map<String, Object> newAttributeMap,
                     Map<String, Object> existingAttributeMap,
@@ -778,7 +785,7 @@ class LdapConnectorSpec extends Specification {
                     LdapCallbackContext context,
                     FoundObjectMethod foundObjectMethod,
                     String pkey,
-                    String _dn,
+                    Name _dn,
                     String attributeName,
                     Map<String, Object> newAttributeMap,
                     Map<String, Object> existingAttributeMap,
@@ -905,13 +912,13 @@ class LdapConnectorSpec extends Specification {
         List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
         String eventId = "eventId"
         String uid = "1"
-        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        Name dn = new LdapName("uid=1,ou=people,dc=berkeley,dc=edu")
 
         when:
         addOu("people")
         // initial create
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
+                dn         : dn.toString(),
                 uid        : uid,
                 objectClass: objectClasses,
                 sn         : "User",
@@ -1200,7 +1207,7 @@ class LdapConnectorSpec extends Specification {
         )
         String eventId = "eventId"
         String uid = "bogus"
-        String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
+        Name dn = new LdapName("uid=bogus,ou=people,dc=berkeley,dc=edu")
 
         when:
         LdapConnectorException exception = null
@@ -1271,7 +1278,7 @@ class LdapConnectorSpec extends Specification {
         )
         String eventId = "eventId"
         String uid = "bogus"
-        String dn = "uid=bogus,ou=people,dc=berkeley,dc=edu"
+        Name dn = new LdapName("uid=bogus,ou=people,dc=berkeley,dc=edu")
 
         when:
         LdapConnectorException exception = null
@@ -1295,13 +1302,13 @@ class LdapConnectorSpec extends Specification {
         )
         String eventId = "eventId"
         String uid = "1"
-        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+        Name dn = new LdapName("uid=1,ou=people,dc=berkeley,dc=edu")
 
         when:
         // create
         addOu("people")
         boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
-                dn         : dn,
+                dn         : dn.toString(),
                 uid        : uid,
                 objectClass: ["top", "person", "inetOrgPerson", "organizationalPerson"],
                 sn         : "User",
@@ -1324,5 +1331,35 @@ class LdapConnectorSpec extends Specification {
         then:
         exception.ldapErrorCode == 16 // 16 is no such attribute
         exception.ldapErrorMessage.startsWith("[LDAP: error code 16 - NO_SUCH_ATTRIBUTE: failed for MessageType : MODIFY_REQUEST")
+    }
+
+    @Unroll
+    void "confirm LdapName and LdapNameBuilder do not re-escape already-escaped RFC2253 strings: #description"() {
+        when: "using the already escaped RFC2253 string"
+        LdapName ldapNameFromAlreadyEscapedString = new LdapName(alreadyEscapedInput)
+        LdapName ldapNameBuilderFromAlreadyEscapedString = LdapNameBuilder.newInstance(alreadyEscapedInput).build()
+
+        and: "using LdapName and the unescaped string components of the name"
+        LdapName ldapNameFromUnescapedComponents = new LdapName("")
+        unescapedComponentInput.each { ldapNameFromUnescapedComponents.add(new Rdn(it[0], it[1])) }
+
+        and: "using LdapNameBuilder and the unescaped string components of the name"
+        LdapNameBuilder ldapNameBuilderFromUnescapedComponents = LdapNameBuilder.newInstance("")
+        unescapedComponentInput.each { ldapNameBuilderFromUnescapedComponents.add(it[0], it[1]) }
+
+        then:
+        ldapNameFromAlreadyEscapedString.toString() == expectedToString
+        ldapNameBuilderFromAlreadyEscapedString.toString() == expectedToString
+        ldapNameFromUnescapedComponents.toString() == expectedToString
+        ldapNameBuilderFromUnescapedComponents.build().toString() == expectedToString
+
+        where:
+        // alreadyEscapedInput is a string that conforms to RFC2253 escaping
+        description      | alreadyEscapedInput | unescapedComponentInput          || expectedToString
+        "with equals"    | "uid=a\\=b,dc=edu"  | [["dc", "edu"], ["uid", "a=b"]]  || "uid=a\\=b,dc=edu"
+        "with comma"     | "uid=a\\,b,dc=edu"  | [["dc", "edu"], ["uid", "a,b"]]  || "uid=a\\,b,dc=edu"
+        "with backslash" | "uid=a\\\\b,dc=edu" | [["dc", "edu"], ["uid", "a\\b"]] || "uid=a\\\\b,dc=edu"
+        "with hash"      | "uid=a\\#b,dc=edu"  | [["dc", "edu"], ["uid", "a#b"]]  || "uid=a\\#b,dc=edu"
+
     }
 }
