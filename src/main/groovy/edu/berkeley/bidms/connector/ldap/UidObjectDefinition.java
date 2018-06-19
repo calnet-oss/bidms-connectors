@@ -49,7 +49,7 @@ public class UidObjectDefinition implements LdapObjectDefinition {
     private boolean keepExistingAttributesWhenUpdating;
 
     /**
-     * If true then entires in the directory with the same primary key that
+     * If true then entries in the directory with the same primary key that
      * aren't considered the primary entry will be removed.  The primary
      * entry is decided by the first entry encountered where
      * acceptAsExistingDn(dn) returns true.
@@ -62,10 +62,11 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      * callback that is assigned to the dynamic indicator.
      * <p/>
      * The strings in this array have the following naming convention:
-     * <code>attributeName.indicator</code> where <i>attributeName</i> is the
-     * attribute in the downstream system and <i>indicator</i> is a string
-     * that identifies which callback to use.  The callbacks are configured
-     * in the connector's dynamicAttributeCallbacks map, where the map key is
+     * <code>attributeName.indicator</code> where <i>attributeName</i> is
+     * the attribute in the downstream system and <i>indicator</i> is a
+     * string that identifies which callback to use.  The callbacks are
+     * configured in the connector's dynamicAttributeCallbacks map, where the
+     * map key is
      * <i>attributeName.indicator</i> or <i>indicator</i> (for an indicator
      * that applies to all attributes) and the value is the instance of the
      * callback.
@@ -74,6 +75,17 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      * disable renaming of the object.
      */
     private String[] dynamicAttributeNames;
+
+    /**
+     * If true, then the attribute values of DNs will be checked with case
+     * sensitivity enabled when DNs are compared for equality. Attribute
+     * names in DNs remain case insensitive when compared.
+     * <p>
+     * Different implementations of LDAP and AD servers behave differently in
+     * regards to DN case sensitivity.  AD is an example where case sensitive
+     * DN checking should be enabled.
+     */
+    private boolean caseSensitiveDnCheckingEnabled;
 
     /**
      * The globally unique identifier attribute in the directory, which is
@@ -244,5 +256,28 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setDynamicAttributeNames(String[] dynamicAttributeNames) {
         this.dynamicAttributeNames = dynamicAttributeNames;
+    }
+
+    /**
+     * @return true indicates the attribute values of DNs will be checked
+     * with case sensitivity enabled when DNs are compared for equality.
+     * Attribute names in DNs remain case insensitive when compared.
+     */
+    @Override
+    public boolean isCaseSensitiveDnCheckingEnabled() {
+        return caseSensitiveDnCheckingEnabled;
+    }
+
+    /**
+     * @param caseSensitiveDnCheckingEnabled true indicates the attribute
+     *                                       values of DNs will be checked
+     *                                       with case sensitivity enabled
+     *                                       when DNs are compared for
+     *                                       equality. Attribute names in DNs
+     *                                       remain case insensitive when
+     *                                       compared.
+     */
+    public void setCaseSensitiveDnCheckingEnabled(boolean caseSensitiveDnCheckingEnabled) {
+        this.caseSensitiveDnCheckingEnabled = caseSensitiveDnCheckingEnabled;
     }
 }

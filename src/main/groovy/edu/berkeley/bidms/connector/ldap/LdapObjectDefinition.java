@@ -117,10 +117,11 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * a callback that is assigned to the dynamic indicator.
      * <p/>
      * The strings in this array have the following naming convention:
-     * <code>attributeName.indicator</code> where <i>attributeName</i> is the
-     * attribute in the downstream system and <i>indicator</i> is a string
-     * that identifies which callback to use.  The callbacks are configured
-     * in the connector's dynamicAttributeCallbacks map, where the map key is
+     * <code>attributeName.indicator</code> where <i>attributeName</i> is
+     * the attribute in the downstream system and <i>indicator</i> is a
+     * string that identifies which callback to use.  The callbacks are
+     * configured in the connector's dynamicAttributeCallbacks map, where the
+     * map key is
      * <i>attributeName.indicator</i> or <i>indicator</i> (for an indicator
      * that applies to all attributes) and the value is the instance of the
      * callback.
@@ -133,4 +134,15 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * a callback that is assigned to the dynamic indicator.
      */
     String[] getDynamicAttributeNames();
+
+    /**
+     * If true, then the attribute values of DNs will be checked with case
+     * sensitivity enabled when DNs are compared for equality. Attribute
+     * names in DNs remain case insensitive when compared.
+     * <p>
+     * Different implementations of LDAP and AD servers behave differently in
+     * regards to DN case sensitivity.  AD is an example where case sensitive
+     * DN checking should be enabled.
+     */
+    boolean isCaseSensitiveDnCheckingEnabled();
 }
