@@ -66,6 +66,8 @@ import javax.naming.directory.BasicAttribute
 import javax.naming.directory.BasicAttributes
 import javax.naming.directory.DirContext
 import javax.naming.directory.ModificationItem
+import javax.naming.ldap.LdapName
+import javax.naming.ldap.Rdn
 
 /**
  * Connector for LDAP and Active Directory directory servers.
@@ -444,7 +446,7 @@ class LdapConnector implements Connector {
                     toDirContextAdapterContextMapper
             )
             subordinates.each { DirContextAdapter foundSubordinate ->
-                if (foundSubordinate.dn != dn) {
+                if (!nameEquals(objectDef, foundSubordinate.dn, dn)) {
                     delete(eventId, objectDef, context, pkey, foundSubordinate.dn)
                 }
             }
@@ -1091,11 +1093,11 @@ class LdapConnector implements Connector {
         boolean wasRenamed = false
 
         if (!isDelete) {
-            if (((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
+            if (existingEntry && ((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
                 // Delete all the entries that we're not keeping as the
                 // existingEntry
                 matchingEntryResult.searchResults.each { DirContextAdapter entry ->
-                    if (entry.dn != existingEntry?.dn) {
+                    if (!nameEquals(objectDef, entry.dn, existingEntry.dn)) {
                         delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn)
                         isModified = true
                     }
@@ -1171,7 +1173,7 @@ class LdapConnector implements Connector {
                 Name originalDn = existingEntry.dn
 
                 // Check for need to move DNs
-                if (renamingEnabled && dn && originalDn != dn) {
+                if (renamingEnabled && dn && !nameEquals(objectDef, originalDn, dn)) {
                     // Move DN
                     rename(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, originalDn, dn)
                     try {
@@ -1216,7 +1218,7 @@ class LdapConnector implements Connector {
                 boolean renamingDisabledCase = !renamingEnabled &&
                         uniqueIdentifierAttrName &&
                         uniqueIdentifierEventCallbacks &&
-                        dn && existingEntry.dn != dn
+                        dn && !nameEquals(objectDef, existingEntry.dn, dn)
                 boolean missingUniqIdCase = !wasRenamed &&
                         uniqueIdentifierAttrName &&
                         uniqueIdentifierEventCallbacks &&
@@ -1573,6 +1575,71 @@ class LdapConnector implements Connector {
                     modificationItems: [item],
                     exception: exception
             ))
+        }
+    }
+
+    /**
+     * If objectDef indicates that case sensitive DN checking is enabled,
+     * then the attribute values of name1 and name2 are checked with case
+     * sensitivity.  Otherwise, name1 and name2 are compared without case
+     * sensitivity.  Different implementations of LDAP and AD servers behave
+     * differently in regards to DN case sensitivity so this is why it's
+     * configurable in the objectDef.
+     *
+     * @param objectDef Object definition
+     * @param name1 Left name to check for equality
+     * @param name2 Left name to check for equality
+     * @return true if name1 and name2 are considered equivalent
+     */
+    static boolean nameEquals(ObjectDefinition objectDef, Name name1, Name name2) {
+        if (((LdapObjectDefinition) objectDef).caseSensitiveDnCheckingEnabled) {
+            return caseSensitiveNameEquals(name1, name2)
+        } else {
+            return name1 == name2
+        }
+    }
+
+    /**
+     * {@link Name#equals} is not case sensitive.  This method will do an
+     * equality check on name1 and name2 (typically both {@link LdapName}s)
+     * where {@link Rdn} attribute values are checked with case sensitivity. 
+     * {@link Rdn} attribute names are still case insensitive.  If name1 and
+     * name2 aren't both {@link LdapName}s, then equality checking is done
+     * with {@link Name#toString} and the whole name strings are compared
+     * with case sensitivity, both attribute names and values.
+     *
+     * Note that DN case sensitivity is treated differently with different
+     * LDAP or AD server implementations.  For example, when attempting a
+     * MODRDN operation where the new string is in a different case than the
+     * original DN, this will succeed.  For Apache Derby, this will result
+     * in a NameAlreadyBoundException.
+     *
+     * @param name1 Left name to check for equality
+     * @param name2 Left name to check for equality
+     * @return true if name1 and name2 are considered equivalent
+     */
+    static boolean caseSensitiveNameEquals(Name name1, Name name2) {
+        // Allow one of the parameters to be null but not both
+        if (name1 == null && name2 == null) {
+            throw new NullPointerException("Both name1 and name2 are null")
+        }
+        if ((name1 == null && name2 != null) || (name1 != null && name2 == null)) {
+            return false
+        }
+        if (name1 instanceof LdapName && name2 instanceof LdapName) {
+            def name1Map = name1.rdns.collectEntries { Rdn rdn ->
+                // rdn.type is the attribute name and we store it lower case
+                // to make it case insensitive when we compare maps
+                [rdn.type.toLowerCase(), rdn.value]
+            }
+            def name2Map = name2.rdns.collectEntries { Rdn rdn ->
+                [rdn.type.toLowerCase(), rdn.value]
+            }
+            return name1Map == name2Map
+
+        } else {
+            // not both LdapNames - use toString() to compare
+            return name1.toString() == name2.toString()
         }
     }
 }
