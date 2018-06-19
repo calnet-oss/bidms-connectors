@@ -34,7 +34,6 @@ import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
 import groovy.transform.EqualsAndHashCode
 import groovy.transform.ToString
 
-
 /**
  * Insert messages sent to callbacks.
  */

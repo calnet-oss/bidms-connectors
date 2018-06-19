@@ -29,6 +29,8 @@ package edu.berkeley.bidms.connector.ldap
 
 import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 
+import javax.naming.Name
+
 interface LdapDynamicAttributeCallback {
     /**
      * @return A LdapDynamicAttributeCallbackResult instance that contains
@@ -43,7 +45,7 @@ interface LdapDynamicAttributeCallback {
             LdapCallbackContext context,
             FoundObjectMethod foundObjectMethod,
             String pkey,
-            String dn,
+            Name dn,
             String attributeName,
             Map<String,Object> newAttributeMap,
             Map<String,Object> existingAttributeMap,
