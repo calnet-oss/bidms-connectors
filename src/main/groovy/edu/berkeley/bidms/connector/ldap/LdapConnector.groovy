@@ -51,8 +51,10 @@ import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
 import groovy.util.logging.Slf4j
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.ContextMapper
+import org.springframework.ldap.core.ContextSource
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
+import org.springframework.ldap.core.support.SingleContextSource
 import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.query.LdapQueryBuilder
 import org.springframework.ldap.query.SearchScope
@@ -73,13 +75,12 @@ import javax.naming.ldap.Rdn
  * Connector for LDAP and Active Directory directory servers.
  */
 @Slf4j
-// LDAP isn't transactional but this allows the same directory connection to
-// be re-used for LdapTemplation operations when
-// TransactionAwareContextSourceProxy is in use by the LdapTemplate.
+// LDAP isn't transactional but a caller may want to use
+// TransactionAwareContextSourceProxy.
 @Transactional
 class LdapConnector implements Connector {
 
-    LdapTemplate ldapTemplate
+    ContextSource contextSource
 
     /**
      * Converts a search result to a DirContextAdatper.
@@ -358,24 +359,20 @@ class LdapConnector implements Connector {
      * search-by-primary-key is enabled.  Search-by-primary-key is disabled
      * if objectDef.getLdapQueryForPrimaryKey(pkey) returns null.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param pkey Primary key
      * @return A list of objects found in the directory if search by primary
      *         key is enabled, null otherwise.
      */
-    List<DirContextAdapter> searchByPrimaryKey(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, String pkey) {
-        LdapQuery query = objectDef.getLdapQueryForPrimaryKey(pkey)
-        return (query ? ldapTemplate.search(query, toDirContextAdapterContextMapper) : null)
+    List<DirContextAdapter> searchByPrimaryKey(LdapRequestContext reqCtx, String pkey) {
+        LdapQuery query = reqCtx.objectDef.getLdapQueryForPrimaryKey(pkey)
+        return (query ? reqCtx.ldapTemplate.search(query, toDirContextAdapterContextMapper) : null)
     }
 
     /**
      * Search the directory for an object by its DN.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param dn Distinguished name
      * @param attributes Optionally, a list of attributes to return for each
      *        object.  If null, returns all attributes except operational
@@ -383,33 +380,29 @@ class LdapConnector implements Connector {
      *        to be specified.
      * @return The found directory object or null if it was not found
      */
-    DirContextAdapter lookup(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Name dn, String[] attributes = null) {
+    DirContextAdapter lookup(LdapRequestContext reqCtx, Name dn, String[] attributes = null) {
         if (!attributes) {
-            return (DirContextAdapter) ldapTemplate.lookup(dn)
+            return (DirContextAdapter) reqCtx.ldapTemplate.lookup(dn)
         } else {
-            return (DirContextAdapter) ldapTemplate.lookup(dn, attributes, toDirContextAdapterContextMapper)
+            return (DirContextAdapter) reqCtx.ldapTemplate.lookup(dn, attributes, toDirContextAdapterContextMapper)
         }
     }
 
     /**
      * Search the directory for an object by its globally unique identifier.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param pkey When searching by globally unique identifier, the object
      *        must also match this expected primary key.
      * @param uniqueIdentifier Globally unique identifier
      * @return The found directory object or null if it was not found
      */
     DirContextAdapter lookupByGloballyUniqueIdentifier(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
+            LdapRequestContext reqCtx,
             String pkey,
             Object uniqueIdentifier
     ) {
-        return ldapTemplate.searchForObject(objectDef.getLdapQueryForGloballyUniqueIdentifier(pkey, uniqueIdentifier), toDirContextAdapterContextMapper)
+        return reqCtx.ldapTemplate.searchForObject(reqCtx.objectDef.getLdapQueryForGloballyUniqueIdentifier(pkey, uniqueIdentifier), toDirContextAdapterContextMapper)
     }
 
     /**
@@ -418,9 +411,7 @@ class LdapConnector implements Connector {
      * callback and is otherwise unused in determining which object to
      * delete.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param pkey The primary key.  The parameter is only passed in to pass
      *        back to the delete callback and is otherwise unused in
      *        determining which object to delete.
@@ -428,9 +419,7 @@ class LdapConnector implements Connector {
      * @throws LdapConnectorException If an error occurs
      */
     void delete(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
+            LdapRequestContext reqCtx,
             String pkey,
             Name dn
     ) throws LdapConnectorException {
@@ -441,18 +430,18 @@ class LdapConnector implements Connector {
                     .base(dn)
                     .searchScope(SearchScope.ONELEVEL)
                     .where("objectClass").isPresent()
-            List<DirContextAdapter> subordinates = ldapTemplate.search(
+            List<DirContextAdapter> subordinates = reqCtx.ldapTemplate.search(
                     subordinateQuery,
                     toDirContextAdapterContextMapper
             )
             subordinates.each { DirContextAdapter foundSubordinate ->
-                if (!nameEquals(objectDef, foundSubordinate.dn, dn)) {
-                    delete(eventId, objectDef, context, pkey, foundSubordinate.dn)
+                if (!nameEquals(reqCtx.objectDef, foundSubordinate.dn, dn)) {
+                    delete(reqCtx, pkey, foundSubordinate.dn)
                 }
             }
 
             // now that the subordinates are deleted, delete the DN
-            ldapTemplate.unbind(dn)
+            reqCtx.ldapTemplate.unbind(dn)
         }
         catch (Throwable t) {
             exception = t
@@ -461,9 +450,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapDeleteEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: objectDef,
-                    context: context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     pkey: pkey,
                     dn: dn,
                     exception: exception
@@ -475,9 +464,7 @@ class LdapConnector implements Connector {
      * Rename an object in the directory, which means changing its
      * distinguished name.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param pkey Primary key
      * @param oldDn The original distinguished name of the object to be
      *        renamed.
@@ -486,9 +473,7 @@ class LdapConnector implements Connector {
      * @throws LdapConnectorException If an error occurs
      */
     void rename(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
+            LdapRequestContext reqCtx,
             String pkey,
             Name oldDn,
             Name newDn
@@ -496,15 +481,15 @@ class LdapConnector implements Connector {
         Throwable exception
         Object directoryUniqueIdentifier = null
         try {
-            ldapTemplate.rename(oldDn, newDn)
+            reqCtx.ldapTemplate.rename(oldDn, newDn)
 
-            if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
+            if (reqCtx.objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
                 // Get the possibly-changed unique identifier for the
                 // renamed object so we can pass it back in the unique identifier
                 // callback
-                directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, newDn)
+                directoryUniqueIdentifier = getGloballyUniqueIdentifier(reqCtx, newDn)
                 if (!directoryUniqueIdentifier) {
-                    log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just renamed entry of $newDn")
+                    log.warn("The ${reqCtx.objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just renamed entry of $newDn")
                 }
             }
         }
@@ -515,9 +500,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapRenameEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: objectDef,
-                    context: context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     pkey: pkey,
                     oldDn: oldDn,
                     newDn: newDn,
@@ -528,9 +513,9 @@ class LdapConnector implements Connector {
                 deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
                         success: true,
                         causingEvent: LdapEventType.RENAME_EVENT,
-                        eventId: eventId,
-                        objectDef: objectDef,
-                        context: context,
+                        eventId: reqCtx.eventId,
+                        objectDef: reqCtx.objectDef,
+                        context: reqCtx.context,
                         pkey: pkey,
                         oldDn: oldDn,
                         newDn: newDn,
@@ -574,9 +559,7 @@ class LdapConnector implements Connector {
      * names of the directory schema, as retrieved from the directory via a
      * search() or lookup().
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param foundObjectMethod
      * @param pkey Primary key
      * @param existingEntry The existing directory entry to update
@@ -589,9 +572,7 @@ class LdapConnector implements Connector {
      * @throws LdapConnectorException If an error occurs
      */
     boolean update(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
+            LdapRequestContext reqCtx,
             FoundObjectMethod foundObjectMethod,
             String pkey,
             DirContextAdapter existingEntry,
@@ -607,7 +588,7 @@ class LdapConnector implements Connector {
 
             convertedNewAttributeMap = convertCallerProvidedMap(newReplaceAttributeMap)
             Map<String, Object> attributesToKeepOrUpdate
-            if (objectDef.isKeepExistingAttributesWhenUpdating()) {
+            if (reqCtx.objectDef.isKeepExistingAttributesWhenUpdating()) {
                 attributesToKeepOrUpdate = new LinkedHashMap<String, Object>(oldAttributeMap)
                 attributesToKeepOrUpdate.putAll(convertedNewAttributeMap)
             } else {
@@ -620,7 +601,7 @@ class LdapConnector implements Connector {
             // the attribute is not in the newAttributeMap or if the
             // attribute is explicitly set to null in the newAttributeMap.
             HashSet<String> attributeNamesToRemove = (
-                    (!objectDef.isKeepExistingAttributesWhenUpdating() ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
+                    (!reqCtx.objectDef.isKeepExistingAttributesWhenUpdating() ? oldAttributeMap.keySet() - attributesToKeepOrUpdate.keySet() : []) as HashSet<String>
             ) + (
                     (newReplaceAttributeMap.findAll { it.value == null && oldAttributeMap.containsKey(it.key) }*.key) as HashSet<String>
             )
@@ -664,7 +645,7 @@ class LdapConnector implements Connector {
 
             modificationItems = existingEntry.modificationItems
             boolean isModified = modificationItems?.size()
-            ldapTemplate.modifyAttributes(existingEntry)
+            reqCtx.ldapTemplate.modifyAttributes(existingEntry)
 
             return isModified
         }
@@ -675,9 +656,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapUpdateEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: objectDef,
-                    context: context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     foundMethod: foundObjectMethod,
                     pkey: pkey,
                     oldAttributes: oldAttributeMap,
@@ -692,9 +673,7 @@ class LdapConnector implements Connector {
     /**
      * Insert a new object into the directory.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param pkey Primary key of object being created
      * @param dn Distinguished name of object being created
      * @param attributeMap Attributes for the object where the keys in the
@@ -706,9 +685,7 @@ class LdapConnector implements Connector {
      * @throws LdapConnectorException If an error occurs
      */
     Object insert(
-            String eventId,
-            LdapObjectDefinition objectDef,
-            LdapCallbackContext context,
+            LdapRequestContext reqCtx,
             String pkey,
             Name dn,
             Map<String, Object> attributeMap
@@ -723,14 +700,14 @@ class LdapConnector implements Connector {
             // word "bind" and "rebind" to mean "create" and "update." In
             // this context, it does not mean "authenticate (bind) to the
             // directory server.
-            ldapTemplate.bind(dn, null, buildAttributes(convertedNewAttributeMap))
+            reqCtx.ldapTemplate.bind(dn, null, buildAttributes(convertedNewAttributeMap))
 
-            if (objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
+            if (reqCtx.objectDef.globallyUniqueIdentifierAttributeName && uniqueIdentifierEventCallbacks) {
                 // Get the newly-created directory unique identifier so we
                 // can pass it back in the insert callback
-                directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, context, dn)
+                directoryUniqueIdentifier = getGloballyUniqueIdentifier(reqCtx, dn)
                 if (!directoryUniqueIdentifier) {
-                    log.warn("The ${objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just inserted entry of $dn")
+                    log.warn("The ${reqCtx.objectDef.globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just inserted entry of $dn")
                 }
                 return directoryUniqueIdentifier
             }
@@ -743,9 +720,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapInsertEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: objectDef,
-                    context: context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     pkey: pkey,
                     dn: dn,
                     newAttributes: convertedNewAttributeMap ?: attributeMap,
@@ -756,9 +733,9 @@ class LdapConnector implements Connector {
                 deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
                         success: true,
                         causingEvent: LdapEventType.INSERT_EVENT,
-                        eventId: eventId,
-                        objectDef: objectDef,
-                        context: context,
+                        eventId: reqCtx.eventId,
+                        objectDef: reqCtx.objectDef,
+                        context: reqCtx.context,
                         pkey: pkey,
                         newDn: dn,
                         globallyUniqueIdentifier: directoryUniqueIdentifier,
@@ -775,9 +752,7 @@ class LdapConnector implements Connector {
     }
 
     MatchingEntryResult findMatchingEntry(
-            String eventId,
-            ObjectDefinition objectDef,
-            CallbackContext context,
+            LdapRequestContext reqCtx,
             Name dn,
             String pkey,
             Object uniqueIdentifier
@@ -797,7 +772,7 @@ class LdapConnector implements Connector {
         // See if records belonging to the pkey exist.
         // This will return null if objectDef.getLdapQueryForPrimaryKey()
         // returns null, indicating search-by-primary-key is disabled.
-        result.searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
+        result.searchResults = searchByPrimaryKey(reqCtx, pkey)
 
         if (!result.entry && dn) {
             // Find entries with matching dn.  searchResults only
@@ -813,7 +788,7 @@ class LdapConnector implements Connector {
         // If none of the entries match DN but there's one value in
         // searchResults, use that.  If a dn was specified, this means
         // the DN has changed, but the object was found by pkey.
-        if (!result.entry && result.searchResults?.size() == 1 && ((LdapObjectDefinition) objectDef).acceptAsExistingDn(result.searchResults.first().dn.toString())) {
+        if (!result.entry && result.searchResults?.size() == 1 && reqCtx.objectDef.acceptAsExistingDn(result.searchResults.first().dn.toString())) {
             result.entry = result.searchResults.first()
             result.foundObjectMethod = (dn ? FoundObjectMethod.BY_MATCHED_KEY_DN_MISMATCH : FoundObjectMethod.BY_MATCHED_KEY_DN_NOT_PROVIDED)
         }
@@ -826,7 +801,7 @@ class LdapConnector implements Connector {
         // has changed.
         if (!result.entry && result.searchResults?.size()) {
             if (uniqueIdentifier) {
-                result.entry = lookupByGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, uniqueIdentifier)
+                result.entry = lookupByGloballyUniqueIdentifier(reqCtx, pkey, uniqueIdentifier)
             }
             if (result.entry) {
                 // match found against the globally unique identifier
@@ -839,7 +814,7 @@ class LdapConnector implements Connector {
                 // our DN or unique identifier.  Just pick the first one
                 // found that matches our DN acceptance criteria.
                 result.entry = result.searchResults.find { DirContextAdapter entry ->
-                    ((LdapObjectDefinition) objectDef).acceptAsExistingDn(entry.dn.toString())
+                    reqCtx.objectDef.acceptAsExistingDn(entry.dn.toString())
                 }
                 if (result.entry) {
                     result.foundObjectMethod = FoundObjectMethod.BY_FIRST_FOUND
@@ -850,7 +825,7 @@ class LdapConnector implements Connector {
         // DN may still exist but with a different primary key
         if (!result.entry && dn) {
             try {
-                result.entry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
+                result.entry = lookup(reqCtx, dn)
             }
             catch (NameNotFoundException ignored) {
                 // no-op
@@ -948,9 +923,7 @@ class LdapConnector implements Connector {
      * attribute names in the directory schema, as when retrieved from the
      * directory via a search() or lookup().
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param attrMap The map of the attributes for the directory object
      *        where the keys in the map are attribute names.  For changes to
      *        be detected properly, attribute names are case sensitive and
@@ -972,172 +945,106 @@ class LdapConnector implements Connector {
             Map<String, Object> attrMap,
             boolean isDelete
     ) throws LdapConnectorException {
-        LinkedHashMap<String, Object> attrMapCopy = new LinkedHashMap<String, Object>(attrMap)
+        LdapRequestContext reqCtx = new LdapRequestContext(singleContextLdapTemplate, eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context)
+        try {
+            LinkedHashMap<String, Object> attrMapCopy = new LinkedHashMap<String, Object>(attrMap)
 
-        // (optional) globally unique identifier
-        String uniqueIdentifierAttrName = ((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName
-        Object uniqueIdentifier = null
-        if (uniqueIdentifierAttrName) {
-            uniqueIdentifier = attrMapCopy[uniqueIdentifierAttrName]
-            // Remove the uniqueIdentifier from the object -- we're assuming
-            // this is an operational attribute that we can't set.
-            attrMapCopy.remove(uniqueIdentifierAttrName)
-        }
-
-        // primary key
-        String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
-        String pkey = attrMapCopy[pkeyAttrName]
-        if (!isDelete && !pkey) {
-            throw new LdapConnectorException("Directory object is missing a required value for primary key $pkeyAttrName")
-        }
-
-        // (optional) DN
-        Name dn = null
-        boolean hasDynamicDn = false
-        boolean hasDnOnCreate = false
-        boolean hasDnOnUpdate = false
-        boolean hasDnNotConditional = false
-        dnDeterminationLabel:
-        {
-            String dnNotConditional = attrMapCopy.dn
-            hasDnNotConditional = dnNotConditional != null
-            if (hasDnNotConditional) {
-                // Remove the dn from the object -- not an actual attribute
-                attrMapCopy.remove("dn")
+            // (optional) globally unique identifier
+            String uniqueIdentifierAttrName = ((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName
+            Object uniqueIdentifier = null
+            if (uniqueIdentifierAttrName) {
+                uniqueIdentifier = attrMapCopy[uniqueIdentifierAttrName]
+                // Remove the uniqueIdentifier from the object -- we're assuming
+                // this is an operational attribute that we can't set.
+                attrMapCopy.remove(uniqueIdentifierAttrName)
             }
 
-            String dnDynamic = attrMapCopy["dn.DYNAMIC"]
-            hasDynamicDn = dnDynamic != null
-            if (hasDynamicDn) {
-                attrMapCopy.remove("dn.DYNAMIC")
-            }
-            if (hasDynamicDn && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.DYNAMIC")) {
-                throw new LdapConnectorException("dn.DYNAMIC is provided but it is not listed in dynamicAttributeNames in the object definition")
+            // primary key
+            String pkeyAttrName = ((LdapObjectDefinition) objectDef).primaryKeyAttributeName
+            String pkey = attrMapCopy[pkeyAttrName]
+            if (!isDelete && !pkey) {
+                throw new LdapConnectorException("Directory object is missing a required value for primary key $pkeyAttrName")
             }
 
-            String dnOnCreate = attrMapCopy["dn.ONCREATE"]
-            hasDnOnCreate = dnOnCreate != null
-            if (hasDnOnCreate) {
-                attrMapCopy.remove("dn.ONCREATE")
-            }
-            if (hasDnOnCreate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONCREATE")) {
-                throw new LdapConnectorException("dn.ONCREATE is provided but it is not listed in dynamicAttributeNames in the object definition")
-            }
-
-            String dnOnUpdate = attrMapCopy["dn.ONUPDATE"]
-            hasDnOnUpdate = dnOnUpdate != null
-            if (hasDnOnUpdate) {
-                attrMapCopy.remove("dn.ONUPDATE")
-            }
-            if (hasDnOnUpdate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONUPDATE")) {
-                throw new LdapConnectorException("dn.ONUPDATE is provided but it is not listed in dynamicAttributeNames in the object definition")
-            }
-
-            if (hasDnOnCreate && hasDnOnUpdate) {
-                throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE is allowed: provide only one of these")
-            }
-            // dn.DYNAMIC trumps dn.UPDATE
-            String conditionalDn = dnDynamic ?: dnOnUpdate ?: dnOnCreate
-
-            if (hasDnNotConditional && conditionalDn) {
-                throw new LdapConnectorException("Only one of dn.DYNAMIC, dn.ONCREATE, dn.ONUPDATE or dn is allowed: provide only one of these")
-            }
-
-            String dnString = conditionalDn ?: dnNotConditional
-            if (dnString) {
-                dn = buildDnName(dnString)
-            }
-        }
-
-        MatchingEntryResult matchingEntryResult = null
-        DirContextAdapter existingEntry = null
-        FoundObjectMethod foundObjectMethod = null
-        Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
-
-        if (!isDelete || hasDynamicDn) {
-            // If dn.DYNAMIC is set, then primary key/unique identifier must be used to retrieve the object.
-            matchingEntryResult = findMatchingEntry(eventId, objectDef, context, (!hasDynamicDn ? dn : null), pkey, uniqueIdentifier)
-            existingEntry = matchingEntryResult.entry
-            foundObjectMethod = matchingEntryResult.foundObjectMethod
-
-            // For dn.DYNAMIC, need to execute the callback early to get the real DN value.
-            if (hasDynamicDn) {
-                Name existingDn = (existingEntry ? existingEntry.dn : null)
-                if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
-                    existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
+            // (optional) DN
+            Name dn = null
+            boolean hasDynamicDn = false
+            boolean hasDnOnCreate = false
+            boolean hasDnOnUpdate = false
+            boolean hasDnNotConditional = false
+            dnDeterminationLabel:
+            {
+                String dnNotConditional = attrMapCopy.dn
+                hasDnNotConditional = dnNotConditional != null
+                if (hasDnNotConditional) {
+                    // Remove the dn from the object -- not an actual attribute
+                    attrMapCopy.remove("dn")
                 }
 
-                LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks["dn.DYNAMIC"]
-                if (!callback) {
-                    throw new LdapConnectorException("No callback for dynamic attribute dn.DYNAMIC is set")
+                String dnDynamic = attrMapCopy["dn.DYNAMIC"]
+                hasDynamicDn = dnDynamic != null
+                if (hasDynamicDn) {
+                    attrMapCopy.remove("dn.DYNAMIC")
                 }
-                LdapDynamicAttributeCallbackResult result = callback.attributeValue(
-                        eventId,
-                        (LdapObjectDefinition) objectDef,
-                        (LdapCallbackContext) context,
-                        foundObjectMethod,
-                        pkey,
-                        null,
-                        "dn",
-                        attrMap,
-                        existingAttrMapForDynamicAttributeCallbacks,
-                        existingDn,
-                        "DYNAMIC",
-                        dn
-                )
-                dn = buildDnName(result.attributeValue as String)
-            }
-        }
+                if (hasDynamicDn && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.DYNAMIC")) {
+                    throw new LdapConnectorException("dn.DYNAMIC is provided but it is not listed in dynamicAttributeNames in the object definition")
+                }
 
-        boolean isModified = false
-        boolean wasRenamed = false
+                String dnOnCreate = attrMapCopy["dn.ONCREATE"]
+                hasDnOnCreate = dnOnCreate != null
+                if (hasDnOnCreate) {
+                    attrMapCopy.remove("dn.ONCREATE")
+                }
+                if (hasDnOnCreate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONCREATE")) {
+                    throw new LdapConnectorException("dn.ONCREATE is provided but it is not listed in dynamicAttributeNames in the object definition")
+                }
 
-        if (!isDelete) {
-            if (existingEntry && ((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
-                // Delete all the entries that we're not keeping as the
-                // existingEntry
-                matchingEntryResult.searchResults.each { DirContextAdapter entry ->
-                    if (!nameEquals(objectDef, entry.dn, existingEntry.dn)) {
-                        delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, entry.dn)
-                        isModified = true
-                    }
+                String dnOnUpdate = attrMapCopy["dn.ONUPDATE"]
+                hasDnOnUpdate = dnOnUpdate != null
+                if (hasDnOnUpdate) {
+                    attrMapCopy.remove("dn.ONUPDATE")
+                }
+                if (hasDnOnUpdate && !((LdapObjectDefinition) objectDef).dynamicAttributeNames.contains("dn.ONUPDATE")) {
+                    throw new LdapConnectorException("dn.ONUPDATE is provided but it is not listed in dynamicAttributeNames in the object definition")
+                }
+
+                if (hasDnOnCreate && hasDnOnUpdate) {
+                    throw new LdapConnectorException("Only one of dn.ONCREATE or dn.ONUPDATE is allowed: provide only one of these")
+                }
+                // dn.DYNAMIC trumps dn.UPDATE
+                String conditionalDn = dnDynamic ?: dnOnUpdate ?: dnOnCreate
+
+                if (hasDnNotConditional && conditionalDn) {
+                    throw new LdapConnectorException("Only one of dn.DYNAMIC, dn.ONCREATE, dn.ONUPDATE or dn is allowed: provide only one of these")
+                }
+
+                String dnString = conditionalDn ?: dnNotConditional
+                if (dnString) {
+                    dn = buildDnName(dnString)
                 }
             }
 
-            // renaming is only disabled when none of: dn.DYNAMIC, dn.ONUPDATE, dn
-            // exists in the attribute map.
-            boolean renamingEnabled = hasDynamicDn || hasDnOnUpdate || hasDnNotConditional
+            MatchingEntryResult matchingEntryResult = null
+            DirContextAdapter existingEntry = null
+            FoundObjectMethod foundObjectMethod = null
+            Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
 
-            // Deal with dynamic attributes
-            ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
-                // everything before the last dot is the attribute name and
-                // everything after the last dot is the dynamic callback
-                // indicator
-                String attributeName = attrNameAndIndicator.substring(0, attrNameAndIndicator.lastIndexOf('.'))
-                String dynamicCallbackIndicator = attrNameAndIndicator.substring(attributeName.length() + 1)
+            if (!isDelete || hasDynamicDn) {
+                // If dn.DYNAMIC is set, then primary key/unique identifier must be used to retrieve the object.
+                matchingEntryResult = findMatchingEntry(reqCtx, (!hasDynamicDn ? dn : null), pkey, uniqueIdentifier)
+                existingEntry = matchingEntryResult.entry
+                foundObjectMethod = matchingEntryResult.foundObjectMethod
 
-                Object dynamicValueTemplate = attrMapCopy[attrNameAndIndicator]
-                attrMapCopy.remove(attrNameAndIndicator)
-
-                if (dynamicValueTemplate != null) {
-                    Object existingAttributeValue = null
-                    Attribute existingAttribute = null
-                    try {
-                        existingAttribute = (existingEntry ? existingEntry.attributes?.get(attributeName) : null)
-                    }
-                    catch (javax.naming.NameNotFoundException ignored) {
-                        // no-op
-                    }
-                    if (existingAttribute) {
-                        existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
-                    }
+                // For dn.DYNAMIC, need to execute the callback early to get the real DN value.
+                if (hasDynamicDn) {
+                    Name existingDn = (existingEntry ? existingEntry.dn : null)
                     if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
                         existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
                     }
 
-                    LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
+                    LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks["dn.DYNAMIC"]
                     if (!callback) {
-                        throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
+                        throw new LdapConnectorException("No callback for dynamic attribute dn.DYNAMIC is set")
                     }
                     LdapDynamicAttributeCallbackResult result = callback.attributeValue(
                             eventId,
@@ -1145,175 +1052,242 @@ class LdapConnector implements Connector {
                             (LdapCallbackContext) context,
                             foundObjectMethod,
                             pkey,
-                            dn,
-                            attributeName,
+                            null,
+                            "dn",
                             attrMap,
                             existingAttrMapForDynamicAttributeCallbacks,
-                            existingAttributeValue,
-                            dynamicCallbackIndicator,
-                            dynamicValueTemplate
+                            existingDn,
+                            "DYNAMIC",
+                            dn
                     )
-
-                    if (result) {
-                        // a null attributeValue will result in attribute
-                        // removal
-                        attrMapCopy[attributeName] = result.attributeValue
-                    } else {
-                        // Don't modify: The attribute name shouldn't be in
-                        // the map, but ust in case it is, remove it so we
-                        // leave it unchanged downstream.
-                        attrMapCopy.remove(attributeName)
-                    }
+                    dn = buildDnName(result.attributeValue as String)
                 }
             }
 
-            if (existingEntry) {
-                // Already exists -- update
+            boolean isModified = false
+            boolean wasRenamed = false
 
-                Name originalDn = existingEntry.dn
+            if (!isDelete) {
+                if (existingEntry && ((LdapObjectDefinition) objectDef).isRemoveDuplicatePrimaryKeys()) {
+                    // Delete all the entries that we're not keeping as the
+                    // existingEntry
+                    matchingEntryResult.searchResults.each { DirContextAdapter entry ->
+                        if (!nameEquals(objectDef, entry.dn, existingEntry.dn)) {
+                            delete(reqCtx, pkey, entry.dn)
+                            isModified = true
+                        }
+                    }
+                }
 
-                // Check for need to move DNs
-                if (renamingEnabled && dn && !nameEquals(objectDef, originalDn, dn)) {
-                    // Move DN
-                    rename(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, originalDn, dn)
-                    try {
-                        existingEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
+                // renaming is only disabled when none of: dn.DYNAMIC, dn.ONUPDATE, dn
+                // exists in the attribute map.
+                boolean renamingEnabled = hasDynamicDn || hasDnOnUpdate || hasDnNotConditional
+
+                // Deal with dynamic attributes
+                ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
+                    // everything before the last dot is the attribute name and
+                    // everything after the last dot is the dynamic callback
+                    // indicator
+                    String attributeName = attrNameAndIndicator.substring(0, attrNameAndIndicator.lastIndexOf('.'))
+                    String dynamicCallbackIndicator = attrNameAndIndicator.substring(attributeName.length() + 1)
+
+                    Object dynamicValueTemplate = attrMapCopy[attrNameAndIndicator]
+                    attrMapCopy.remove(attrNameAndIndicator)
+
+                    if (dynamicValueTemplate != null) {
+                        Object existingAttributeValue = null
+                        Attribute existingAttribute = null
+                        try {
+                            existingAttribute = (existingEntry ? existingEntry.attributes?.get(attributeName) : null)
+                        }
+                        catch (javax.naming.NameNotFoundException ignored) {
+                            // no-op
+                        }
+                        if (existingAttribute) {
+                            existingAttributeValue = ToMapContextMapper.convertAttribute(existingAttribute)
+                        }
+                        if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
+                            existingAttrMapForDynamicAttributeCallbacks = toMapContextMapper.mapFromContext(existingEntry)
+                        }
+
+                        LdapDynamicAttributeCallback callback = dynamicAttributeCallbacks[attrNameAndIndicator] ?: dynamicAttributeCallbacks[dynamicCallbackIndicator]
+                        if (!callback) {
+                            throw new LdapConnectorException("No callback for dynamic attribute $attrNameAndIndicator nor $dynamicCallbackIndicator is set")
+                        }
+                        LdapDynamicAttributeCallbackResult result = callback.attributeValue(
+                                eventId,
+                                (LdapObjectDefinition) objectDef,
+                                (LdapCallbackContext) context,
+                                foundObjectMethod,
+                                pkey,
+                                dn,
+                                attributeName,
+                                attrMap,
+                                existingAttrMapForDynamicAttributeCallbacks,
+                                existingAttributeValue,
+                                dynamicCallbackIndicator,
+                                dynamicValueTemplate
+                        )
+
+                        if (result) {
+                            // a null attributeValue will result in attribute
+                            // removal
+                            attrMapCopy[attributeName] = result.attributeValue
+                        } else {
+                            // Don't modify: The attribute name shouldn't be in
+                            // the map, but ust in case it is, remove it so we
+                            // leave it unchanged downstream.
+                            attrMapCopy.remove(attributeName)
+                        }
                     }
-                    catch (NameNotFoundException ignored) {
-                        existingEntry = null
+                }
+
+                if (existingEntry) {
+                    // Already exists -- update
+
+                    Name originalDn = existingEntry.dn
+
+                    // Check for need to move DNs
+                    if (renamingEnabled && dn && !nameEquals(objectDef, originalDn, dn)) {
+                        // Move DN
+                        rename(reqCtx, pkey, originalDn, dn)
+                        try {
+                            existingEntry = lookup(reqCtx, dn)
+                        }
+                        catch (NameNotFoundException ignored) {
+                            existingEntry = null
+                        }
+                        if (!existingEntry) {
+                            throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN from the old $originalDn")
+                        }
+                        isModified = true
+                        wasRenamed = true
                     }
-                    if (!existingEntry) {
-                        throw new LdapConnectorException("Unable to lookup $dn right after an existing object was renamed to this DN from the old $originalDn")
+
+                    if (!existingEntry.updateMode) {
+                        existingEntry.updateMode = true
                     }
+
+                    if (update(
+                            reqCtx,
+                            foundObjectMethod,
+                            pkey,
+                            existingEntry,
+                            attrMapCopy
+                    )) {
+                        isModified = true
+                    }
+
+                    //
+                    // If we're updating with renaming disabled and the DN on
+                    // the existing object is different than the "requested DN",
+                    // then report a possible change of global unique identifier
+                    // via a callback.
+                    //
+                    // Do the same if the globally unique identifier is missing
+                    // from the input.  We want to give the caller the chance
+                    // to store it and send it next time in the attrMap.
+                    //
+                    boolean renamingDisabledCase = !renamingEnabled &&
+                            uniqueIdentifierAttrName &&
+                            uniqueIdentifierEventCallbacks &&
+                            dn && !nameEquals(objectDef, existingEntry.dn, dn)
+                    boolean missingUniqIdCase = !wasRenamed &&
+                            uniqueIdentifierAttrName &&
+                            uniqueIdentifierEventCallbacks &&
+                            !attrMap[uniqueIdentifierAttrName]
+                    if (renamingDisabledCase || missingUniqIdCase) {
+                        // Renaming disabled and the requested dn doesn't match
+                        // the actual dn, indicating a rename from somewhere
+                        // else, which could have resulted in a globally unique
+                        // identifier change.  If renamed, existingEntry object
+                        // was replaced with new entry.
+                        Object directoryUniqueIdentifier = getGloballyUniqueIdentifier(reqCtx, existingEntry.dn)
+                        if (!directoryUniqueIdentifier) {
+                            log.warn("The ${((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just updated entry of ${existingEntry.dn}")
+                        } else {
+                            if (directoryUniqueIdentifier) {
+                                deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
+                                        success: true,
+                                        causingEvent: LdapEventType.UPDATE_EVENT,
+                                        eventId: eventId,
+                                        objectDef: (LdapObjectDefinition) objectDef,
+                                        context: (LdapCallbackContext) context,
+                                        pkey: pkey,
+                                        oldDn: originalDn,
+                                        newDn: dn,
+                                        globallyUniqueIdentifier: directoryUniqueIdentifier,
+                                        wasRenamed: wasRenamed
+                                ))
+                            }
+                        }
+                    }
+                } else {
+                    // Doesn't already exist -- create
+                    if (!dn) {
+                        throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
+                    }
+                    Object insertedGloballyUniqId = insert(reqCtx, pkey, dn, attrMapCopy)
                     isModified = true
-                    wasRenamed = true
-                }
 
-                if (!existingEntry.updateMode) {
-                    existingEntry.updateMode = true
-                }
-
-                if (update(
-                        eventId,
-                        (LdapObjectDefinition) objectDef,
-                        (LdapCallbackContext) context,
-                        foundObjectMethod,
-                        pkey,
-                        existingEntry,
-                        attrMapCopy
-                )) {
-                    isModified = true
-                }
-
-                //
-                // If we're updating with renaming disabled and the DN on
-                // the existing object is different than the "requested DN",
-                // then report a possible change of global unique identifier
-                // via a callback.
-                //
-                // Do the same if the globally unique identifier is missing
-                // from the input.  We want to give the caller the chance
-                // to store it and send it next time in the attrMap.
-                //
-                boolean renamingDisabledCase = !renamingEnabled &&
-                        uniqueIdentifierAttrName &&
-                        uniqueIdentifierEventCallbacks &&
-                        dn && !nameEquals(objectDef, existingEntry.dn, dn)
-                boolean missingUniqIdCase = !wasRenamed &&
-                        uniqueIdentifierAttrName &&
-                        uniqueIdentifierEventCallbacks &&
-                        !attrMap[uniqueIdentifierAttrName]
-                if (renamingDisabledCase || missingUniqIdCase) {
-                    // Renaming disabled and the requested dn doesn't match
-                    // the actual dn, indicating a rename from somewhere
-                    // else, which could have resulted in a globally unique
-                    // identifier change.  If renamed, existingEntry object
-                    // was replaced with new entry.
-                    Object directoryUniqueIdentifier = getGloballyUniqueIdentifier(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, existingEntry.dn)
-                    if (!directoryUniqueIdentifier) {
-                        log.warn("The ${((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just updated entry of ${existingEntry.dn}")
-                    } else {
-                        if (directoryUniqueIdentifier) {
-                            deliverCallbackMessage(new LdapUniqueIdentifierEventMessage(
-                                    success: true,
-                                    causingEvent: LdapEventType.UPDATE_EVENT,
-                                    eventId: eventId,
-                                    objectDef: (LdapObjectDefinition) objectDef,
-                                    context: (LdapCallbackContext) context,
-                                    pkey: pkey,
-                                    oldDn: originalDn,
-                                    newDn: dn,
-                                    globallyUniqueIdentifier: directoryUniqueIdentifier,
-                                    wasRenamed: wasRenamed
-                            ))
+                    boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).dynamicAttributeNames.any {
+                        it.endsWith(".ONUPDATE")
+                    }
+                    if (hasUpdateOnlyAttributes) {
+                        // Since there are update-only attributes, we do a subsequent
+                        // update after the insert, but only if we found the object
+                        // we just inserted.
+                        if (insertedGloballyUniqId) {
+                            LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
+                            attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
+                            persist(eventId, objectDef, context, attrMapForUpdate, false)
+                        } else {
+                            log.warn("pkey $pkey has ONUPDATE attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
                         }
                     }
                 }
             } else {
-                // Doesn't already exist -- create
-                if (!dn) {
-                    throw new LdapConnectorException("Unable to find existing object in directory by pkey $pkey but unable to insert a new object because the dn was not provided")
-                }
-                Object insertedGloballyUniqId = insert(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey, dn, attrMapCopy)
-                isModified = true
+                // is a deletion for the DN and/or pkey
 
-                boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).dynamicAttributeNames.any {
-                    it.endsWith(".ONUPDATE")
+                if (!dn && !pkey) {
+                    throw new LdapConnectorException("When deleting, at least one of dn or $pkeyAttrName must be set in the attribute map")
                 }
-                if (hasUpdateOnlyAttributes) {
-                    // Since there are update-only attributes, we do a subsequent
-                    // update after the insert, but only if we found the object
-                    // we just inserted.
-                    if (insertedGloballyUniqId) {
-                        LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
-                        attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
-                        persist(eventId, objectDef, context, attrMapForUpdate, false)
-                    } else {
-                        log.warn("pkey $pkey has ONUPDATE attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
-                    }
-                }
-            }
-        } else {
-            // is a deletion for the DN and/or pkey
 
-            if (!dn && !pkey) {
-                throw new LdapConnectorException("When deleting, at least one of dn or $pkeyAttrName must be set in the attribute map")
-            }
-
-            // Delete by DN
-            if (dn) {
-                try {
-                    DirContextAdapter entryByDN = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn)
-                    String entryByDNPkey = ((Attribute) entryByDN.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
-                    delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, entryByDNPkey, entryByDN.dn)
-                    isModified = true
-                }
-                catch (NameNotFoundException ignored) {
-                    // not found by DN: no-op
-                }
-            }
-
-            // Delete by primary key
-            if (pkey) {
-                if (((LdapObjectDefinition) objectDef).removeDuplicatePrimaryKeys) {
-                    List<DirContextAdapter> searchResults = searchByPrimaryKey(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, pkey)
-                    searchResults.each { DirContextAdapter entry ->
-                        String entryPkey = ((Attribute) entry.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
-                        delete(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, entryPkey, entry.dn)
+                // Delete by DN
+                if (dn) {
+                    try {
+                        DirContextAdapter entryByDN = lookup(reqCtx, dn)
+                        String entryByDNPkey = ((Attribute) entryByDN.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
+                        delete(reqCtx, entryByDNPkey, entryByDN.dn)
                         isModified = true
                     }
+                    catch (NameNotFoundException ignored) {
+                        // not found by DN: no-op
+                    }
+                }
+
+                // Delete by primary key
+                if (pkey) {
+                    if (((LdapObjectDefinition) objectDef).removeDuplicatePrimaryKeys) {
+                        List<DirContextAdapter> searchResults = searchByPrimaryKey(reqCtx, pkey)
+                        searchResults.each { DirContextAdapter entry ->
+                            String entryPkey = ((Attribute) entry.attributes.all.find { Attribute attr -> attr.ID == pkeyAttrName })?.get()
+                            delete(reqCtx, entryPkey, entry.dn)
+                            isModified = true
+                        }
+                    }
                 }
             }
-        }
 
-        return isModified
+            return isModified
+        }
+        finally {
+            ((SingleContextSource) reqCtx.ldapTemplate.contextSource).destroy()
+        }
     }
 
     /**
      * Create a Name object that represents a distinguished name string.
-     *
-     * @param dn
-     * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
     Name buildDnName(String dn) {
@@ -1323,9 +1297,6 @@ class LdapConnector implements Connector {
     /**
      * Convert a map to an Attributes object that contains all the keys and
      * values from the map.
-     *
-     * @param attrMap
-     * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
     Attributes buildAttributes(Map<String, Object> attrMap) {
@@ -1352,9 +1323,6 @@ class LdapConnector implements Connector {
 
     /**
      * Normalize a caller-provided map of attribute values.
-     *
-     * @param map
-     * @return
      */
     protected Map<String, Object> convertCallerProvidedMap(Map<String, Object> map) {
         return (Map<String, Object>) map.findAll { it.value != null && !(it.value instanceof List && !((List) it.value).size()) }.collectEntries {
@@ -1364,9 +1332,6 @@ class LdapConnector implements Connector {
 
     /**
      * Normalize a caller-provided list of attribute values.
-     *
-     * @param list
-     * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
     protected Object convertCallerProvidedList(List list) {
@@ -1379,9 +1344,6 @@ class LdapConnector implements Connector {
 
     /**
      * Normalize a caller-provided value.
-     *
-     * @param value
-     * @return
      */
     @SuppressWarnings("GrMethodMayBeStatic")
     protected Object convertCallerProvidedValue(Object value) {
@@ -1402,24 +1364,22 @@ class LdapConnector implements Connector {
     /**
      * Retrieve the globally unique identifier for a DN.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param dn Distinguished name to retrieve the globally unique
      *        identifier for
      * @return The globally unique identifier value
      */
-    Object getGloballyUniqueIdentifier(String eventId, LdapObjectDefinition objectDef, LdapCallbackContext context, Name dn) {
-        if (objectDef.globallyUniqueIdentifierAttributeName) {
+    Object getGloballyUniqueIdentifier(LdapRequestContext reqCtx, Name dn) {
+        if (reqCtx.objectDef.globallyUniqueIdentifierAttributeName) {
             DirContextAdapter newEntry = null
             try {
-                newEntry = lookup(eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context, dn, [objectDef.globallyUniqueIdentifierAttributeName] as String[])
+                newEntry = lookup(reqCtx, dn, [reqCtx.objectDef.globallyUniqueIdentifierAttributeName] as String[])
             }
             catch (NameNotFoundException ignored) {
                 // no-op
             }
             if (newEntry) {
-                Attribute attr = newEntry?.attributes?.get(objectDef.globallyUniqueIdentifierAttributeName)
+                Attribute attr = newEntry?.attributes?.get(reqCtx.objectDef.globallyUniqueIdentifierAttributeName)
                 if (attr?.size()) {
                     return attr.get()
                 } else {
@@ -1443,9 +1403,7 @@ class LdapConnector implements Connector {
      *
      * It's possible to use persist() to remove attributes by setting the attribute value to a null, but it doesn't work for "write-only" attributes (e.g., userPassword).  This method supports "write-only" attributes.
      *
-     * @param eventId Event id
-     * @param objectDef Object definition
-     * @param context Callback context
+     * @param reqCtx Context for the request
      * @param dn (optional) DN of the object to modify
      * @param primaryKeyAttrValue Primary key attribute value of the object to modify
      * @param globallyUniqueIdentifierAttrValue (optional) Globally unique identifier value of the object to modify
@@ -1455,15 +1413,13 @@ class LdapConnector implements Connector {
      * @throws LdapConnectorException If an error occurs
      */
     boolean removeAttributes(
-            String eventId,
-            ObjectDefinition objectDef,
-            CallbackContext context,
+            LdapRequestContext reqCtx,
             Name dn,
             String primaryKeyAttrValue,
             Object globallyUniqueIdentifierAttrValue,
             String[] attributeNamesToRemove
     ) throws LdapConnectorException {
-        MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        MatchingEntryResult matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
         if (!matchingEntryResult?.entry) {
             throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
         }
@@ -1478,7 +1434,7 @@ class LdapConnector implements Connector {
             // Spring LDAP doesn't support removing write-only
             // attributes (like userPassword) so that's why we use
             // DirContext directly here.
-            DirContext dirctx = ldapTemplate.contextSource.readWriteContext
+            DirContext dirctx = reqCtx.ldapTemplate.contextSource.readWriteContext
             try {
                 attributeNamesToRemove.each { String attrNameToRemove ->
                     ModificationItem item = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(attrNameToRemove, null))
@@ -1501,9 +1457,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapRemoveAttributesEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: (LdapObjectDefinition) objectDef,
-                    context: (LdapCallbackContext) context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     foundMethod: matchingEntryResult.foundObjectMethod,
                     pkey: primaryKeyAttrValue,
                     removedAttributeNames: attributeNamesToRemove,
@@ -1522,16 +1478,14 @@ class LdapConnector implements Connector {
      * (e.g., userPassword).  This method supports "write-only" attributes.
      */
     boolean setAttribute(
-            String eventId,
-            ObjectDefinition objectDef,
-            CallbackContext context,
+            LdapRequestContext reqCtx,
             Name dn,
             String primaryKeyAttrValue,
             Object globallyUniqueIdentifierAttrValue,
             String attributeName,
             Object attributeValue
     ) throws LdapConnectorException {
-        MatchingEntryResult matchingEntryResult = findMatchingEntry(eventId, objectDef, context, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        MatchingEntryResult matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
         if (!matchingEntryResult?.entry) {
             throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
         }
@@ -1546,7 +1500,7 @@ class LdapConnector implements Connector {
             // Spring LDAP doesn't support write-only attributes (like
             // userPassword) so that's why we use DirContext directly
             // here.
-            DirContext dirctx = ldapTemplate.contextSource.readWriteContext
+            DirContext dirctx = reqCtx.ldapTemplate.contextSource.readWriteContext
             try {
                 item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, attributeValue))
                 dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
@@ -1564,9 +1518,9 @@ class LdapConnector implements Connector {
         finally {
             deliverCallbackMessage(new LdapSetAttributeEventMessage(
                     success: exception == null,
-                    eventId: eventId,
-                    objectDef: (LdapObjectDefinition) objectDef,
-                    context: (LdapCallbackContext) context,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
                     foundMethod: matchingEntryResult.foundObjectMethod,
                     pkey: primaryKeyAttrValue,
                     attributeName: attributeName,
@@ -1641,5 +1595,17 @@ class LdapConnector implements Connector {
             // not both LdapNames - use toString() to compare
             return name1.toString() == name2.toString()
         }
+    }
+
+    /**
+     * @return A LdapTemplate built with a SingleContextSource that wraps
+     * the parent contextSource, which will cause the LDAP connection to be
+     * used across calls of this same ldapTemplate instance.  The caller
+     * must ensure the contextSource is closed when done with the returned
+     * ldapTemplate by using something like:
+     * <code>((SingleContextSource)ldapTemplate.contextSource).destroy()</code>
+     */
+    protected LdapTemplate getSingleContextLdapTemplate() {
+        return new LdapTemplate(new SingleContextSource(contextSource.readWriteContext))
     }
 }

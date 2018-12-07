@@ -42,13 +42,13 @@ import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import org.slf4j.LoggerFactory
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
 import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
-import org.springframework.ldap.transaction.compensating.manager.TransactionAwareContextSourceProxy
 import software.apacheds.embedded.EmbeddedLdapServer
 import spock.lang.Shared
 import spock.lang.Specification
@@ -66,9 +66,6 @@ class LdapConnectorSpec extends Specification {
 
     @Shared
     LdapContextSource ldapContextSource
-
-    @Shared
-    LdapTemplate ldapTemplate
 
     LdapInsertEventCallback insertEventCallback = Mock(LdapInsertEventCallback)
     LdapUpdateEventCallback updateEventCallback = Mock(LdapUpdateEventCallback)
@@ -101,6 +98,7 @@ class LdapConnectorSpec extends Specification {
                 return "dc=berkeley,dc=edu"
             }
         }
+        embeddedLdapServer.deleteInstanceDirectoryOnShutdown = false
         embeddedLdapServer.init()
 
         this.ldapContextSource = new LdapContextSource()
@@ -110,8 +108,6 @@ class LdapConnectorSpec extends Specification {
             url = "ldap://localhost:10389"
         }
         ldapContextSource.afterPropertiesSet()
-        this.ldapTemplate = new LdapTemplate(new TransactionAwareContextSourceProxy(ldapContextSource))
-        ldapTemplate.afterPropertiesSet()
     }
 
     void cleanupSpec() {
@@ -119,7 +115,7 @@ class LdapConnectorSpec extends Specification {
     }
 
     void setup() {
-        ldapConnector.ldapTemplate = ldapTemplate
+        ldapConnector.contextSource = ldapContextSource
     }
 
     void addOu(String ou) {
@@ -446,6 +442,7 @@ class LdapConnectorSpec extends Specification {
     @Unroll("#description")
     void "test LdapConnector persistence when primary key is not in DN and primary key changes"() {
         given:
+        def log = LoggerFactory.getLogger(LdapConnectorSpec)
         UidObjectDefinition uidObjectDef = new UidObjectDefinition(
                 objectClass: "person",
                 keepExistingAttributesWhenUpdating: true,
@@ -532,7 +529,7 @@ class LdapConnectorSpec extends Specification {
         String uid = "1"
 
         LdapConnector ldapConnector = new LdapConnector(
-                ldapTemplate: ldapTemplate,
+                contextSource: ldapContextSource,
                 isSynchronousCallback: false,
                 insertEventCallbacks: [insertEventCallback],
                 updateEventCallbacks: [updateEventCallback],
@@ -952,7 +949,7 @@ class LdapConnectorSpec extends Specification {
 
         List<Map<String, Object>> retrieved = searchForUid(uid)
 
-        String uniqueIdentifier = ldapConnector.getGloballyUniqueIdentifier(eventId, objDef, null, dn)
+        String uniqueIdentifier = ldapConnector.getGloballyUniqueIdentifier(new LdapRequestContext(ldapTemplate, eventId, objDef, null), dn)
 
         and: "cleanup"
         deleteDn(dn)
@@ -1203,7 +1200,7 @@ class LdapConnectorSpec extends Specification {
         assert retrieved.first().description == "initial test"
         assert retrieved.first().userPassword
 
-        boolean wasModified = ldapConnector.removeAttributes(eventId, objDef, null, null, uid, null, ["description", "userPassword"] as String[])
+        boolean wasModified = ldapConnector.removeAttributes(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, ["description", "userPassword"] as String[])
         retrieved = searchForUid(uid)
 
         and: "cleanup"
@@ -1235,7 +1232,7 @@ class LdapConnectorSpec extends Specification {
         when:
         LdapConnectorException exception = null
         try {
-            ldapConnector.removeAttributes(eventId, objDef, null, dn, uid, null, ["description"] as String[])
+            ldapConnector.removeAttributes(new LdapRequestContext(ldapTemplate, eventId, objDef, null), dn, uid, null, ["description"] as String[])
         }
         catch (LdapConnectorException e) {
             exception = e
@@ -1271,9 +1268,9 @@ class LdapConnectorSpec extends Specification {
         List<Map<String, Object>> retrieved = searchForUid(uid)
         assert retrieved.first().description == "initial test"
 
-        boolean wasModified1 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "description", "updated")
-        boolean wasModified2 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "userPassword", "foobar")
-        boolean wasModified3 = ldapConnector.setAttribute(eventId, objDef, null, null, uid, null, "userPassword", "foobar2")
+        boolean wasModified1 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "description", "updated")
+        boolean wasModified2 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "userPassword", "foobar")
+        boolean wasModified3 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "userPassword", "foobar2")
         retrieved = searchForUid(uid)
 
         and: "cleanup"
@@ -1306,7 +1303,7 @@ class LdapConnectorSpec extends Specification {
         when:
         LdapConnectorException exception = null
         try {
-            ldapConnector.setAttribute(eventId, objDef, null, dn, uid, null, "description", "updated")
+            ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), dn, uid, null, "description", "updated")
         }
         catch (LdapConnectorException e) {
             exception = e
@@ -1341,7 +1338,7 @@ class LdapConnectorSpec extends Specification {
         and:
         LdapConnectorException exception = null
         try {
-            ldapConnector.setAttribute(eventId, objDef, null, dn, uid, null, "bogus", "bogus")
+            ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), dn, uid, null, "bogus", "bogus")
         }
         catch (LdapConnectorException e) {
             exception = e
@@ -1384,5 +1381,9 @@ class LdapConnectorSpec extends Specification {
         "with backslash" | "uid=a\\\\b,dc=edu" | [["dc", "edu"], ["uid", "a\\b"]] || "uid=a\\\\b,dc=edu"
         "with hash"      | "uid=a\\#b,dc=edu"  | [["dc", "edu"], ["uid", "a#b"]]  || "uid=a\\#b,dc=edu"
 
+    }
+
+    LdapTemplate getLdapTemplate() {
+        return new LdapTemplate(ldapContextSource)
     }
 }
