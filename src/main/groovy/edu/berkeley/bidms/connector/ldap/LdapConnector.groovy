@@ -35,6 +35,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapPersistCompletionEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRemoveAttributesEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapSetAttributeEventCallback
@@ -43,6 +44,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapUpdateEventCallback
 import edu.berkeley.bidms.connector.ldap.event.message.LdapDeleteEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapInsertEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapPersistCompletionEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRemoveAttributesEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapSetAttributeEventMessage
@@ -131,6 +133,12 @@ class LdapConnector implements Connector {
      * Callbacks to be called when setAttribute() is called.
      */
     List<LdapSetAttributeEventCallback> setAttributeEventCallbacks = []
+
+    /**
+     * Callbacks to be called when persist() is at the bottom of its
+     * finally{} block and about to exit.
+     */
+    List<LdapPersistCompletionEventCallback> persistCompletionEventCallbacks = []
 
     /**
      * Callbacks that dynamically determine the value of an attribute.
@@ -320,6 +328,9 @@ class LdapConnector implements Connector {
                 break
             case LdapEventType.SET_ATTRIBUTE_EVENT:
                 setAttributeEventCallbacks?.each { it.receive((LdapSetAttributeEventMessage) eventMessage) }
+                break
+            case LdapEventType.PERSIST_COMPLETION_EVENT:
+                persistCompletionEventCallbacks?.each { it.receive((LdapPersistCompletionEventMessage) eventMessage) }
                 break
             default:
                 throw new RuntimeException("Unknown LdapEventType for event message: ${eventMessage.eventType}")
@@ -946,6 +957,7 @@ class LdapConnector implements Connector {
             boolean isDelete
     ) throws LdapConnectorException {
         LdapRequestContext reqCtx = new LdapRequestContext(singleContextLdapTemplate, eventId, (LdapObjectDefinition) objectDef, (LdapCallbackContext) context)
+        Throwable exception = null
         try {
             LinkedHashMap<String, Object> attrMapCopy = new LinkedHashMap<String, Object>(attrMap)
 
@@ -1281,8 +1293,23 @@ class LdapConnector implements Connector {
 
             return isModified
         }
+        catch(LdapConnectorException e) {
+            exception = e
+            throw e
+        }
+        catch(Throwable t) {
+            exception = new LdapConnectorException(t)
+            throw exception
+        }
         finally {
             ((SingleContextSource) reqCtx.ldapTemplate.contextSource).destroy()
+            deliverCallbackMessage(new LdapPersistCompletionEventMessage(
+                    success: exception != null,
+                    eventId: reqCtx.eventId,
+                    objectDef: reqCtx.objectDef,
+                    context: reqCtx.context,
+                    exception: exception
+            ))
         }
     }
 

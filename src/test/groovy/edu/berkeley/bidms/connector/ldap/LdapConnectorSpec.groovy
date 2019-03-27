@@ -32,6 +32,7 @@ import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
 import edu.berkeley.bidms.connector.ldap.event.LdapDeleteEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapEventType
 import edu.berkeley.bidms.connector.ldap.event.LdapInsertEventCallback
+import edu.berkeley.bidms.connector.ldap.event.LdapPersistCompletionEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRemoveAttributesEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapRenameEventCallback
 import edu.berkeley.bidms.connector.ldap.event.LdapSetAttributeEventCallback
@@ -47,6 +48,8 @@ import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
 import org.springframework.ldap.core.support.LdapContextSource
+import org.springframework.ldap.pool2.factory.PoolConfig
+import org.springframework.ldap.pool2.factory.PooledContextSource
 import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
 import software.apacheds.embedded.EmbeddedLdapServer
@@ -65,7 +68,7 @@ class LdapConnectorSpec extends Specification {
     EmbeddedLdapServer embeddedLdapServer
 
     @Shared
-    LdapContextSource ldapContextSource
+    PooledContextSource ldapContextSource
 
     LdapInsertEventCallback insertEventCallback = Mock(LdapInsertEventCallback)
     LdapUpdateEventCallback updateEventCallback = Mock(LdapUpdateEventCallback)
@@ -74,6 +77,7 @@ class LdapConnectorSpec extends Specification {
     LdapUniqueIdentifierEventCallback uniqueIdentifierEventCallback = Mock(LdapUniqueIdentifierEventCallback)
     LdapRemoveAttributesEventCallback removeAttributesEventCallback = Mock(LdapRemoveAttributesEventCallback)
     LdapSetAttributeEventCallback setAttributeEventCallback = Mock(LdapSetAttributeEventCallback)
+    LdapPersistCompletionEventCallback persistCompletionEventCallback = Mock(LdapPersistCompletionEventCallback)
 
     LdapConnector ldapConnector = new LdapConnector(
             isSynchronousCallback: true,
@@ -83,7 +87,8 @@ class LdapConnectorSpec extends Specification {
             deleteEventCallbacks: [deleteEventCallback],
             uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback],
             removeAttributesEventCallbacks: [removeAttributesEventCallback],
-            setAttributeEventCallbacks: [setAttributeEventCallback]
+            setAttributeEventCallbacks: [setAttributeEventCallback],
+            persistCompletionEventCallbacks: [persistCompletionEventCallback]
     )
 
     void setupSpec() {
@@ -101,13 +106,25 @@ class LdapConnectorSpec extends Specification {
         embeddedLdapServer.deleteInstanceDirectoryOnShutdown = false
         embeddedLdapServer.init()
 
-        this.ldapContextSource = new LdapContextSource()
-        ldapContextSource.with {
+
+        LdapContextSource unpooledLdapContextSource = new LdapContextSource()
+        unpooledLdapContextSource.with {
             userDn = "uid=admin,ou=system"
             password = "secret"
             url = "ldap://localhost:10389"
         }
-        ldapContextSource.afterPropertiesSet()
+        unpooledLdapContextSource.afterPropertiesSet()
+
+        PoolConfig poolConfig = new PoolConfig()
+        poolConfig.with {
+            blockWhenExhausted = false
+            maxTotal = 4
+            testWhileIdle = false
+        }
+        this.ldapContextSource = new PooledContextSource(poolConfig)
+        ldapContextSource.with {
+            contextSource = unpooledLdapContextSource
+        }
     }
 
     void cleanupSpec() {
@@ -381,6 +398,7 @@ class LdapConnectorSpec extends Specification {
             assert msg.globallyUniqueIdentifier
             assert msg.wasRenamed == (renameOldDn != null)
         }
+        1 * persistCompletionEventCallback.receive(_)
 
         where:
         description                                                                                          | createFirst | srchFirstUUID | createDupe | doDelete | removeDupes | createFirstUid | uid   | dn                                           | deletes | renames | updates | inserts | uniqIdCBs | foundMethod                                  | delPkey | delDn                                                                                | renameOldDn                                                                          | callbackDnOverride
@@ -510,6 +528,7 @@ class LdapConnectorSpec extends Specification {
                         ]
                 )
         )
+        1 * persistCompletionEventCallback.receive(_)
 
         where:
         description                           | cn         | createUid | updateUid
@@ -535,13 +554,15 @@ class LdapConnectorSpec extends Specification {
                 updateEventCallbacks: [updateEventCallback],
                 renameEventCallbacks: [renameEventCallback],
                 deleteEventCallbacks: [deleteEventCallback],
-                uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback]
+                uniqueIdentifierEventCallbacks: [uniqueIdentifierEventCallback],
+                persistCompletionEventCallbacks: [persistCompletionEventCallback]
         )
 
         LdapInsertEventMessage msg = null
         insertEventCallback.receive(_) >> { LdapInsertEventMessage _msg ->
             msg = _msg
         }
+        1 * persistCompletionEventCallback.receive(_)
 
         when:
         ldapConnector.start()
@@ -642,6 +663,7 @@ class LdapConnectorSpec extends Specification {
         retrievedByUid.size() == remainingUids
         (!remainingDN ? retrievedByDn == null : retrievedByDn != null)
         deletes * deleteEventCallback.receive(_)
+        2 * persistCompletionEventCallback.receive(_)
         (deletes ? wasDeleted : !wasDeleted)
 
         where:
@@ -694,6 +716,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().description == "updated"
         1 * updateEventCallback.receive(_)
         1 * uniqueIdentifierEventCallback.receive(_)
+        1 * persistCompletionEventCallback.receive(_)
     }
 
     @Unroll("#description")
@@ -920,6 +943,7 @@ class LdapConnectorSpec extends Specification {
             assert !msg.wasRenamed
 
         }
+        1 * persistCompletionEventCallback.receive(_)
     }
 
     void "test retrieving globally unique identifier"() {
@@ -960,6 +984,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.size() == 1
         retrieved.first().description == "initial test"
         1 * insertEventCallback.receive(_)
+        1 * persistCompletionEventCallback.receive(_)
         uniqueIdentifier?.length()
     }
 
@@ -1022,6 +1047,7 @@ class LdapConnectorSpec extends Specification {
         2 * insertEventCallback.receive(_)
         0 * updateEventCallback.receive(_)
         0 * renameEventCallback.receive(_)
+        2 * persistCompletionEventCallback.receive(_)
     }
 
 
@@ -1072,6 +1098,7 @@ class LdapConnectorSpec extends Specification {
                 assert msg.modificationItems.any { it.modificationOp == DirContextAdapter.REMOVE_ATTRIBUTE }
             }
         }
+        1 * persistCompletionEventCallback.receive(_)
 
         where:
         description                               | objectClasses                                              | expectListReplace
@@ -1129,6 +1156,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().cn == "Test User"
         1 * insertEventCallback.receive(_)
         1 * updateEventCallback.receive(_)
+        2 * persistCompletionEventCallback.receive(_)
     }
 
     void "test update-only attribute"() {
@@ -1170,6 +1198,7 @@ class LdapConnectorSpec extends Specification {
         1 * uniqueIdentifierEventCallback.receive(_)
         // update should have been called to add the description attribute
         1 * updateEventCallback.receive(_)
+        2 * persistCompletionEventCallback.receive(_)
     }
 
     void "test attribute removal"() {
@@ -1216,6 +1245,7 @@ class LdapConnectorSpec extends Specification {
         !retrieved.first().userPassword
         1 * insertEventCallback.receive(_)
         1 * removeAttributesEventCallback.receive(_)
+        1 * persistCompletionEventCallback.receive(_)
     }
 
     void "test attempted attribute removal on a nonexistent object"() {
@@ -1287,6 +1317,7 @@ class LdapConnectorSpec extends Specification {
         retrieved.first().userPassword
         1 * insertEventCallback.receive(_)
         3 * setAttributeEventCallback.receive(_)
+        1 * persistCompletionEventCallback.receive(_)
     }
 
     void "test attempted setAttribute() on a nonexistent object"() {

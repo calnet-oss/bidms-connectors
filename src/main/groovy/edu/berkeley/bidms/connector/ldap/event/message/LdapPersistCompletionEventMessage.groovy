@@ -24,19 +24,27 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event.message
 
-package edu.berkeley.bidms.connector.ldap.event
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType
+import groovy.transform.EqualsAndHashCode
+import groovy.transform.ToString
 
 /**
- * Event type enum.
+ * Persist completion messages sent to callbacks.
  */
-enum LdapEventType {
-    DELETE_EVENT,
-    INSERT_EVENT,
-    RENAME_EVENT,
-    UPDATE_EVENT,
-    UNIQUE_IDENTIFIER_EVENT,
-    REMOVE_ATTRIBUTES_EVENT,
-    SET_ATTRIBUTE_EVENT,
-    PERSIST_COMPLETION_EVENT
+@ToString(includeNames = true)
+@EqualsAndHashCode
+class LdapPersistCompletionEventMessage implements LdapEventMessage {
+    LdapEventType getEventType() {
+        return LdapEventType.PERSIST_COMPLETION_EVENT
+    }
+
+    boolean success
+    String eventId
+    LdapObjectDefinition objectDef
+    LdapCallbackContext context
+    Throwable exception
 }
