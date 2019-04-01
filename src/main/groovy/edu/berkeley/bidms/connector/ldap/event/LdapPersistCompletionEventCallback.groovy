@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017, Regents of the University of California and
+ * Copyright (c) 2019, Regents of the University of California and
  * contributors.
  * All rights reserved.
  *
@@ -24,19 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 package edu.berkeley.bidms.connector.ldap.event
 
+import edu.berkeley.bidms.connector.ldap.event.message.LdapPersistCompletionEventMessage
+
 /**
- * Event type enum.
+ * Callback for persist completion events.
  */
-enum LdapEventType {
-    DELETE_EVENT,
-    INSERT_EVENT,
-    RENAME_EVENT,
-    UPDATE_EVENT,
-    UNIQUE_IDENTIFIER_EVENT,
-    REMOVE_ATTRIBUTES_EVENT,
-    SET_ATTRIBUTE_EVENT,
-    PERSIST_COMPLETION_EVENT
+interface LdapPersistCompletionEventCallback extends LdapEventCallback<LdapPersistCompletionEventMessage> {
 }
