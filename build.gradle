@@ -9,20 +9,21 @@ targetCompatibility = 1.8
 
 repositories {
     mavenLocal()
-    // If using a Maven proxy, put the property settings in
-    // ~/.gradle/gradle.properties for default_proxy_url,
-    // default_proxy_username and default_proxy_password.
-    if (project.hasProperty("default_proxy_url")) {
-        maven {
-            url project.property("default_proxy_url")
-            credentials {
-                username project.property("default_proxy_username")
-                password project.property("default_proxy_password")
+        // If using a Maven proxy, put the property settings in
+        // ~/.gradle/gradle.properties for defaultCentral_proxy_url,
+        // default_proxy_username and default_proxy_password.
+        if (project.hasProperty("defaultCentral_proxy_url")) {
+            maven {
+                url project.property("defaultCentral_proxy_url")
+                credentials {
+                    username project.property("default_proxy_username")
+                    password project.property("default_proxy_password")
+                }
             }
         }
-    }
-    jcenter()
-    mavenCentral()
+        else {
+            jcenter()
+        }
 }
 
 jar {
