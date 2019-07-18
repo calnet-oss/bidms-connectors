@@ -1202,7 +1202,9 @@ class LdapConnector implements Connector {
 
                     // Do group membership additions (removals done after
                     // person entry has been updated)
-                    doGroupMembershipChanges(reqCtx, requestedGroupAdditions, null, existingEntry)
+                    if (doGroupMembershipChanges(reqCtx, requestedGroupAdditions, null, existingEntry)) {
+                        isModified = true
+                    }
 
                     if (!existingEntry.updateMode) {
                         existingEntry.updateMode = true
@@ -1219,7 +1221,9 @@ class LdapConnector implements Connector {
                     }
 
                     // Do group membership removals
-                    doGroupMembershipChanges(reqCtx, null, requestedGroupRemovals, existingEntry)
+                    if (doGroupMembershipChanges(reqCtx, null, requestedGroupRemovals, existingEntry)) {
+                        isModified = true
+                    }
 
                     //
                     // If we're updating with renaming disabled and the DN
@@ -1669,25 +1673,29 @@ class LdapConnector implements Connector {
         return new LdapTemplate(new SingleContextSource(contextSource.readWriteContext))
     }
 
+    /**
+     * @return true if there was at least one group membership modification
+     */
     @SuppressWarnings("GrMethodMayBeStatic")
-    protected void doGroupMembershipChanges(LdapRequestContext reqCtx, List<String> requestedGroupAdditions, List<String> requestedGroupRemovals, DirContextAdapter existingEntry) {
+    protected boolean doGroupMembershipChanges(LdapRequestContext reqCtx, List<String> requestedGroupAdditions, List<String> requestedGroupRemovals, DirContextAdapter existingEntry) {
         requestedGroupAdditions?.each { String groupDN ->
             addDnToGroup(reqCtx, existingEntry.dn.toString(), buildDnName(groupDN))
         }
         requestedGroupRemovals?.each { String groupDN ->
             removeDnFromGroup(reqCtx, existingEntry.dn.toString(), buildDnName(groupDN))
         }
+        return requestedGroupAdditions || requestedGroupRemovals
     }
 
+    @SuppressWarnings("GrMethodMayBeStatic")
     protected void addDnToGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
-        DirContextAdapter groupEntry = lookup(reqCtx, groupDN)
-        groupEntry.addAttributeValue(reqCtx.objectDef.groupMemberAttributeName, memberDN, false)
-        reqCtx.ldapTemplate.modifyAttributes(groupEntry)
+        ModificationItem mod = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
+        reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
     }
 
+    @SuppressWarnings("GrMethodMayBeStatic")
     protected void removeDnFromGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
-        DirContextAdapter groupEntry = lookup(reqCtx, groupDN)
-        groupEntry.removeAttributeValue(reqCtx.objectDef.groupMemberAttributeName, memberDN)
-        reqCtx.ldapTemplate.modifyAttributes(groupEntry)
+        ModificationItem mod = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
+        reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
     }
 }
