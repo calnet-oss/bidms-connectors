@@ -966,8 +966,9 @@ class LdapConnector implements Connector {
             Object uniqueIdentifier = null
             if (uniqueIdentifierAttrName) {
                 uniqueIdentifier = attrMapCopy[uniqueIdentifierAttrName]
-                // Remove the uniqueIdentifier from the object -- we're assuming
-                // this is an operational attribute that we can't set.
+                // Remove the uniqueIdentifier from the object -- we're
+                // assuming this is an operational attribute that we can't
+                // set.
                 attrMapCopy.remove(uniqueIdentifierAttrName)
             }
 
@@ -989,7 +990,8 @@ class LdapConnector implements Connector {
                 String dnNotConditional = attrMapCopy.dn
                 hasDnNotConditional = dnNotConditional != null
                 if (hasDnNotConditional) {
-                    // Remove the dn from the object -- not an actual attribute
+                    // Remove the dn from the object -- not an actual
+                    // attribute
                     attrMapCopy.remove("dn")
                 }
 
@@ -1042,12 +1044,14 @@ class LdapConnector implements Connector {
             Map<String, Object> existingAttrMapForDynamicAttributeCallbacks = null
 
             if (!isDelete || hasDynamicDn) {
-                // If dn.DYNAMIC is set, then primary key/unique identifier must be used to retrieve the object.
+                // If dn.DYNAMIC is set, then primary key/unique identifier
+                // must be used to retrieve the object.
                 matchingEntryResult = findMatchingEntry(reqCtx, (!hasDynamicDn ? dn : null), pkey, uniqueIdentifier)
                 existingEntry = matchingEntryResult.entry
                 foundObjectMethod = matchingEntryResult.foundObjectMethod
 
-                // For dn.DYNAMIC, need to execute the callback early to get the real DN value.
+                // For dn.DYNAMIC, need to execute the callback early to get
+                // the real DN value.
                 if (hasDynamicDn) {
                     Name existingDn = (existingEntry ? existingEntry.dn : null)
                     if (existingEntry && existingAttrMapForDynamicAttributeCallbacks == null) {
@@ -1091,15 +1095,15 @@ class LdapConnector implements Connector {
                     }
                 }
 
-                // renaming is only disabled when none of: dn.DYNAMIC, dn.ONUPDATE, dn
-                // exists in the attribute map.
+                // renaming is only disabled when none of: dn.DYNAMIC,
+                // dn.ONUPDATE, dn exists in the attribute map.
                 boolean renamingEnabled = hasDynamicDn || hasDnOnUpdate || hasDnNotConditional
 
                 // Deal with dynamic attributes
                 ((LdapObjectDefinition) objectDef).dynamicAttributeNames?.each { String attrNameAndIndicator ->
-                    // everything before the last dot is the attribute name and
-                    // everything after the last dot is the dynamic callback
-                    // indicator
+                    // everything before the last dot is the attribute name
+                    // and everything after the last dot is the dynamic
+                    // callback indicator
                     String attributeName = attrNameAndIndicator.substring(0, attrNameAndIndicator.lastIndexOf('.'))
                     String dynamicCallbackIndicator = attrNameAndIndicator.substring(attributeName.length() + 1)
 
@@ -1142,16 +1146,36 @@ class LdapConnector implements Connector {
                         )
 
                         if (result) {
-                            // a null attributeValue will result in attribute
-                            // removal
+                            // a null attributeValue will result in
+                            // attribute removal
                             attrMapCopy[attributeName] = result.attributeValue
                         } else {
-                            // Don't modify: The attribute name shouldn't be in
-                            // the map, but ust in case it is, remove it so we
-                            // leave it unchanged downstream.
+                            // Don't modify: The attribute name shouldn't be
+                            // in the map, but ust in case it is, remove it
+                            // so we leave it unchanged downstream.
                             attrMapCopy.remove(attributeName)
                         }
                     }
+                }
+
+                // Group directives
+                List<String> requestedGroupAdditions = []
+                List<String> requestedGroupRemovals = []
+                if (objectDef.groupDirectiveMetaAttributePrefix) {
+                    String groupAddAttributeName = "${objectDef.groupDirectiveMetaAttributePrefix}.ADD"
+                    String groupRemoveAttributeName = "${objectDef.groupDirectiveMetaAttributePrefix}.REMOVE"
+                    if (attrMapCopy[groupAddAttributeName]) {
+                        requestedGroupAdditions = attrMapCopy[groupAddAttributeName] instanceof Collection || attrMapCopy[groupAddAttributeName].getClass().array ? attrMapCopy[groupAddAttributeName] as List<String> : [attrMapCopy[groupAddAttributeName]] as List<String>
+                    } else {
+                        requestedGroupAdditions = []
+                    }
+                    attrMapCopy.remove(groupAddAttributeName)
+                    if (attrMapCopy[groupRemoveAttributeName]) {
+                        requestedGroupRemovals = attrMapCopy[groupRemoveAttributeName] instanceof Collection || attrMapCopy[groupRemoveAttributeName].getClass().array ? attrMapCopy[groupRemoveAttributeName] as List<String> : [attrMapCopy[groupRemoveAttributeName]] as List<String>
+                    } else {
+                        requestedGroupRemovals = []
+                    }
+                    attrMapCopy.remove(groupRemoveAttributeName)
                 }
 
                 if (existingEntry) {
@@ -1176,6 +1200,10 @@ class LdapConnector implements Connector {
                         wasRenamed = true
                     }
 
+                    // Do group membership additions (removals done after
+                    // person entry has been updated)
+                    doGroupMembershipChanges(reqCtx, requestedGroupAdditions, null, existingEntry)
+
                     if (!existingEntry.updateMode) {
                         existingEntry.updateMode = true
                     }
@@ -1190,15 +1218,19 @@ class LdapConnector implements Connector {
                         isModified = true
                     }
 
+                    // Do group membership removals
+                    doGroupMembershipChanges(reqCtx, null, requestedGroupRemovals, existingEntry)
+
                     //
-                    // If we're updating with renaming disabled and the DN on
-                    // the existing object is different than the "requested DN",
-                    // then report a possible change of global unique identifier
-                    // via a callback.
+                    // If we're updating with renaming disabled and the DN
+                    // on the existing object is different than the
+                    // "requested DN", then report a possible change of
+                    // global unique identifier via a callback.
                     //
-                    // Do the same if the globally unique identifier is missing
-                    // from the input.  We want to give the caller the chance
-                    // to store it and send it next time in the attrMap.
+                    // Do the same if the globally unique identifier is
+                    // missing from the input.  We want to give the caller
+                    // the chance to store it and send it next time in the
+                    // attrMap.
                     //
                     boolean renamingDisabledCase = !renamingEnabled &&
                             uniqueIdentifierAttrName &&
@@ -1209,11 +1241,11 @@ class LdapConnector implements Connector {
                             uniqueIdentifierEventCallbacks &&
                             !attrMap[uniqueIdentifierAttrName]
                     if (renamingDisabledCase || missingUniqIdCase) {
-                        // Renaming disabled and the requested dn doesn't match
-                        // the actual dn, indicating a rename from somewhere
-                        // else, which could have resulted in a globally unique
-                        // identifier change.  If renamed, existingEntry object
-                        // was replaced with new entry.
+                        // Renaming disabled and the requested dn doesn't
+                        // match the actual dn, indicating a rename from
+                        // somewhere else, which could have resulted in a
+                        // globally unique identifier change.  If renamed,
+                        // existingEntry object was replaced with new entry.
                         Object directoryUniqueIdentifier = getGloballyUniqueIdentifier(reqCtx, existingEntry.dn)
                         if (!directoryUniqueIdentifier) {
                             log.warn("The ${((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName} was unable to be retrieved from the just updated entry of ${existingEntry.dn}")
@@ -1243,18 +1275,19 @@ class LdapConnector implements Connector {
                     isModified = true
 
                     boolean hasUpdateOnlyAttributes = ((LdapObjectDefinition) objectDef).dynamicAttributeNames.any {
-                        it.endsWith(".ONUPDATE")
+                        it.endsWith(".ONUPDATE") && attrMap.containsKey(it)
                     }
-                    if (hasUpdateOnlyAttributes) {
-                        // Since there are update-only attributes, we do a subsequent
-                        // update after the insert, but only if we found the object
-                        // we just inserted.
+                    boolean hasGroupDirectiveAttributes = ((LdapObjectDefinition) objectDef).groupDirectiveMetaAttributePrefix && (attrMap.containsKey("${objectDef.groupDirectiveMetaAttributePrefix}.ADD".toString()) || attrMap.containsKey("${objectDef.groupDirectiveMetaAttributePrefix}.REMOVAL".toString()))
+                    if (hasUpdateOnlyAttributes || hasGroupDirectiveAttributes) {
+                        // Since there are update-only or group directive attributes, we do a
+                        // subsequent update after the insert, but only if
+                        // we found the object we just inserted.
                         if (insertedGloballyUniqId) {
                             LinkedHashMap<String, Object> attrMapForUpdate = new LinkedHashMap<String, Object>(attrMap)
                             attrMapForUpdate[((LdapObjectDefinition) objectDef).globallyUniqueIdentifierAttributeName] = insertedGloballyUniqId
                             persist(eventId, objectDef, context, attrMapForUpdate, false)
                         } else {
-                            log.warn("pkey $pkey has ONUPDATE attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
+                            log.warn("pkey $pkey has ONUPDATE or group directive attributes but we couldn't perform an update after the insert because we couldn't find the object right after inserting it")
                         }
                     }
                 }
@@ -1293,11 +1326,11 @@ class LdapConnector implements Connector {
 
             return isModified
         }
-        catch(LdapConnectorException e) {
+        catch (LdapConnectorException e) {
             exception = e
             throw e
         }
-        catch(Throwable t) {
+        catch (Throwable t) {
             exception = new LdapConnectorException(t)
             throw exception
         }
@@ -1634,5 +1667,27 @@ class LdapConnector implements Connector {
      */
     protected LdapTemplate getSingleContextLdapTemplate() {
         return new LdapTemplate(new SingleContextSource(contextSource.readWriteContext))
+    }
+
+    @SuppressWarnings("GrMethodMayBeStatic")
+    protected void doGroupMembershipChanges(LdapRequestContext reqCtx, List<String> requestedGroupAdditions, List<String> requestedGroupRemovals, DirContextAdapter existingEntry) {
+        requestedGroupAdditions?.each { String groupDN ->
+            addDnToGroup(reqCtx, existingEntry.dn.toString(), buildDnName(groupDN))
+        }
+        requestedGroupRemovals?.each { String groupDN ->
+            removeDnFromGroup(reqCtx, existingEntry.dn.toString(), buildDnName(groupDN))
+        }
+    }
+
+    protected void addDnToGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
+        DirContextAdapter groupEntry = lookup(reqCtx, groupDN)
+        groupEntry.addAttributeValue(reqCtx.objectDef.groupMemberAttributeName, memberDN, false)
+        reqCtx.ldapTemplate.modifyAttributes(groupEntry)
+    }
+
+    protected void removeDnFromGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
+        DirContextAdapter groupEntry = lookup(reqCtx, groupDN)
+        groupEntry.removeAttributeValue(reqCtx.objectDef.groupMemberAttributeName, memberDN)
+        reqCtx.ldapTemplate.modifyAttributes(groupEntry)
     }
 }

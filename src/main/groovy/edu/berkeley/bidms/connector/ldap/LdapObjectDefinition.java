@@ -145,4 +145,71 @@ public interface LdapObjectDefinition extends ObjectDefinition {
      * DN checking should be enabled.
      */
     boolean isCaseSensitiveDnCheckingEnabled();
+
+    /**
+     * The optional "group directive meta attribute" is a meta attribute that
+     * is not an actual directory attribute but rather indicates to the
+     * connector that the directory entry being persisted should be added or
+     * removed from directory groups.
+     * <p>
+     * This is best described with an example.  If the
+     * <code>getGroupDirectiveMetaAttributePrefix()</code> is
+     * <code>GROUPS</code>, then when persisting an entry, the attribute map
+     * could contain two attributes:
+     * <pre>
+     * GROUPS.ADD
+     * GROUPS.REMOVE
+     * </pre>
+     * <p>
+     * These two attributes are string collections of group DNs.
+     * <pre>{@code
+     * attrMap["GROUPS.ADD"] = ["cn=groupA,dc=example,dc=com","cn=groupB,dc=example,dc=com"]
+     * attrMap["GROUPS.REMOVE"] = ["cn=groupC,dc=example,dc=com","cn=groupD,dc=example,dc=com"]
+     * }</pre>
+     * <p>
+     * This tells the connector to add the entry to <codegroupA</code> and
+     * <code>groupB</code> and remove the entry from <code>groupC</code> and
+     * <code>groupD</code>.
+     * <p>
+     * These meta attributes can be dynamic, determined by a {@link
+     * LdapDynamicAttributeCallback}.  This would be useful for appending a
+     * base DN.  In this case, the attribute map would contain something
+     * like:
+     * <pre>{@code
+     * attrMap["GROUPS.ADD.DYNAMIC"] = ["cn=groupA","cn=groupB"]
+     * attrMap["GROUPS.REMOVE.DYNAMIC"] = ["cn=groupC","cn=groupD"]
+     * }</pre>
+     * <p>
+     * Then the {@link LdapDynamicAttributeCallback} handler assigned to
+     * these two meta attributes would append
+     * <code>,dc=example,dc=com</code>.
+     * <p>
+     * If the directory implements a <code>memberOf</code></code> virtual
+     * attribute (such as Active Directory), then you could have your {@link
+     * LdapDynamicAttributeCallback} handler compare the existing
+     * <code>memberOf</code> list with your desired <code>memberOf</code>
+     * list to calculate which groups needed to be added and which groups
+     * need to be removed.
+     * <p>
+     * The default LdapConnector implementation will not check if the member
+     * already exists in the group for an ADD and will not check if a member
+     * is missing from the group for a DELETE.
+     *
+     * @return The string prefix for the "group directive meta attribute", or
+     * null if no group directives should be handled.
+     */
+    String getGroupDirectiveMetaAttributePrefix();
+
+    /**
+     * If {@link #getGroupDirectiveMetaAttributePrefix} is enabled (not
+     * null), then this returns the attribute name within the group object
+     * class that contains group member DNs.  For an Active Directory
+     * <code>group</code> object class, this would be <code>member</code>.
+     * For LDAP <code>groupOfUniqueNames</code> object class, this would be
+     * <code>uniqueMember</code>.
+     *
+     * @return The attribute name within the group object class that contains
+     * group member DNs.
+     */
+    String getGroupMemberAttributeName();
 }
