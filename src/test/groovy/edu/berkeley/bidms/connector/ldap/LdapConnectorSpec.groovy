@@ -147,6 +147,19 @@ class LdapConnectorSpec extends Specification {
         ldapTemplate.unbind(ldapConnector.buildDnName("ou=$ou,dc=berkeley,dc=edu"))
     }
 
+    void addGroup(String group, String groupsOU) {
+        Name dnName = ldapConnector.buildDnName("cn=$group,ou=$groupsOU,dc=berkeley,dc=edu")
+        ldapTemplate.bind(dnName, null, ldapConnector.buildAttributes([
+                cn          : group,
+                objectClass : ["top", "groupOfUniqueNames"],
+                uniqueMember: ["ou=$groupsOU,dc=berkeley,dc=edu".toString()] /* work-around: ApacheDS requires at least one member at creation time */
+        ]))
+    }
+
+    void deleteGroup(String group, String groupsOU) {
+        ldapTemplate.unbind(ldapConnector.buildDnName("cn=$group,ou=$groupsOU,dc=berkeley,dc=edu"))
+    }
+
     /**
      * @return The entryUUID attribute on the newly created object
      */
@@ -1412,6 +1425,102 @@ class LdapConnectorSpec extends Specification {
         "with backslash" | "uid=a\\\\b,dc=edu" | [["dc", "edu"], ["uid", "a\\b"]] || "uid=a\\\\b,dc=edu"
         "with hash"      | "uid=a\\#b,dc=edu"  | [["dc", "edu"], ["uid", "a#b"]]  || "uid=a\\#b,dc=edu"
 
+    }
+
+    void "test group additions and removals"() {
+        given:
+        UidObjectDefinition objDef = new UidObjectDefinition(
+                objectClass: "person",
+                keepExistingAttributesWhenUpdating: true,
+                removeDuplicatePrimaryKeys: true,
+                dynamicAttributeNames: ["GROUPS.ADD.DYNAMIC", "GROUPS.REMOVE.DYNAMIC", "description.ONUPDATE"] as String[],
+                groupDirectiveMetaAttributePrefix: "GROUPS"
+        )
+        List<String> objectClasses = ["top", "person", "inetOrgPerson", "organizationalPerson"]
+        String eventId = "eventId"
+        String uid = "1"
+        String dn = "uid=1,ou=people,dc=berkeley,dc=edu"
+
+        when: "initialize dynamic callback"
+        ldapConnector.dynamicAttributeCallbacks["GROUPS.ADD.DYNAMIC"] = new LdapDynamicAttributeCallback() {
+            @Override
+            LdapDynamicAttributeCallbackResult attributeValue(
+                    String _eventId,
+                    LdapObjectDefinition objectDef,
+                    LdapCallbackContext context,
+                    FoundObjectMethod foundObjectMethod,
+                    String pkey,
+                    Name _dn,
+                    String attributeName,
+                    Map<String, Object> newAttributeMap,
+                    Map<String, Object> existingAttributeMap,
+                    Object existingValue,
+                    String dynamicCallbackIndicator,
+                    Object dynamicValueTemplate
+            ) {
+                return new LdapDynamicAttributeCallbackResult(attributeValue: dynamicValueTemplate.collect { "${it},dc=berkeley,dc=edu" })
+            }
+        }
+        // GROUPS.REMOVE.DYNAMIC shares the same callback
+        ldapConnector.dynamicAttributeCallbacks["GROUPS.REMOVE.DYNAMIC"] = ldapConnector.dynamicAttributeCallbacks["GROUPS.ADD.DYNAMIC"]
+
+        and: "add groups"
+        addOu("people")
+        addOu("groups")
+        addGroup("somegroup1", "groups")
+        addGroup("somegroup2", "groups")
+        boolean didCreate = ldapConnector.persist(eventId, objDef, null, [
+                dn                    : dn,
+                uid                   : uid,
+                objectClass           : objectClasses,
+                sn                    : "User",
+                cn                    : "Test User",
+                "description.ONUPDATE": "initial test",
+                "GROUPS.ADD.DYNAMIC"  : ["cn=somegroup1,ou=groups", "cn=somegroup2,ou=groups"]
+        ], false)
+
+        and: "remove one of the groups"
+        ldapConnector.persist(eventId, objDef, null, [
+                dn                     : dn,
+                uid                    : uid,
+                objectClass            : objectClasses,
+                sn                     : "User",
+                cn                     : "Test User",
+                "GROUPS.REMOVE.DYNAMIC": ["cn=somegroup1,ou=groups"]
+        ], false)
+
+        and: "retrieve entries"
+        List<Map<String, Object>> uidRetrieved = searchForUid(uid)
+
+        List<Map<String, Object>> group1Retrieved = ldapTemplate.search(query()
+                .where("objectClass").is("groupOfUniqueNames")
+                .and("cn").is("somegroup1"),
+                ldapConnector.toMapContextMapper)
+        List<Map<String, Object>> group2Retrieved = ldapTemplate.search(query()
+                .where("objectClass").is("groupOfUniqueNames")
+                .and("cn").is("somegroup2"),
+                ldapConnector.toMapContextMapper)
+
+        and: "cleanup"
+        deleteDn(dn)
+        deleteGroup("somegroup1", "groups")
+        deleteGroup("somegroup2", "groups")
+        deleteOu("groups")
+        deleteOu("people")
+
+        then:
+        didCreate
+        uidRetrieved.size() == 1
+        // description is the update-only attribute, but is still there because the object was updated after the insert
+        uidRetrieved.first().description == "initial test"
+        1 * insertEventCallback.receive(_)
+        2 * uniqueIdentifierEventCallback.receive(_)
+        // update should have been called to add the description attribute
+        2 * updateEventCallback.receive(_)
+        3 * persistCompletionEventCallback.receive(_)
+        // person was removed from group1
+        group1Retrieved.first().uniqueMember == "ou=groups,dc=berkeley,dc=edu"
+        group2Retrieved.first().uniqueMember == ["ou=groups,dc=berkeley,dc=edu", "uid=1,ou=people,dc=berkeley,dc=edu"]
     }
 
     LdapTemplate getLdapTemplate() {

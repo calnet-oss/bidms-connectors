@@ -80,12 +80,21 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      * If true, then the attribute values of DNs will be checked with case
      * sensitivity enabled when DNs are compared for equality. Attribute
      * names in DNs remain case insensitive when compared.
-     * <p>
+     * <p/>
      * Different implementations of LDAP and AD servers behave differently in
      * regards to DN case sensitivity.  AD is an example where case sensitive
      * DN checking should be enabled.
      */
     private boolean caseSensitiveDnCheckingEnabled;
+
+    /**
+     * The optional "group directive meta attribute" is a meta attribute that
+     * is not an actual directory attribute but rather indicates to the
+     * connector that the directory entry being persisted should be added or
+     * removed from directory groups.  See {@link LdapObjectDefinition#getGroupDirectiveMetaAttributePrefix}
+     * for more detailed documentation on this feature.
+     */
+    private String groupDirectiveMetaAttributePrefix;
 
     /**
      * The globally unique identifier attribute in the directory, which is
@@ -279,5 +288,54 @@ public class UidObjectDefinition implements LdapObjectDefinition {
      */
     public void setCaseSensitiveDnCheckingEnabled(boolean caseSensitiveDnCheckingEnabled) {
         this.caseSensitiveDnCheckingEnabled = caseSensitiveDnCheckingEnabled;
+    }
+
+    /**
+     * @return The optional "group directive meta attribute" prefix.  The
+     * attribute is a meta attribute that is not an actual directory
+     * attribute but rather indicates to the connector that the directory
+     * entry being persisted should be added or removed from directory
+     * groups.  See {@link LdapObjectDefinition#getGroupDirectiveMetaAttributePrefix}
+     * for more detailed documentation on this feature.
+     */
+    @Override
+    public String getGroupDirectiveMetaAttributePrefix() {
+        return groupDirectiveMetaAttributePrefix;
+    }
+
+    /**
+     * @param groupDirectiveMetaAttributePrefix The optional "group directive
+     *                                          meta attribute" prefix.  The
+     *                                          attribute is a meta attribute
+     *                                          that is not an actual
+     *                                          directory attribute but
+     *                                          rather indicates to the
+     *                                          connector that the directory
+     *                                          entry being persisted should
+     *                                          be added or removed from
+     *                                          directory groups.  See {@link
+     *                                          LdapObjectDefinition#getGroupDirectiveMetaAttributePrefix}
+     *                                          for more detailed documentation
+     *                                          on this feature.
+     */
+    public void setGroupDirectiveMetaAttributePrefix(String groupDirectiveMetaAttributePrefix) {
+        this.groupDirectiveMetaAttributePrefix = groupDirectiveMetaAttributePrefix;
+    }
+
+    /**
+     * This returns the attribute name within the group object class that
+     * contains group member DNs (only utilized if {@link
+     * #getGroupDirectiveMetaAttributePrefix} is not null).  For an Active
+     * Directory
+     * <code>group</code> object class, this would be <code>member</code>.
+     * For LDAP <code>groupOfUniqueNames</code> object class, this would be
+     * <code>uniqueMember</code>.
+     *
+     * @return The attribute name within the group object class that contains
+     * group member DNs.
+     */
+    @Override
+    public String getGroupMemberAttributeName() {
+        return "uniqueMember";
     }
 }
