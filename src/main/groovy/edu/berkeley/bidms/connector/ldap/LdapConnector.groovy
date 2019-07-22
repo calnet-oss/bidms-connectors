@@ -70,6 +70,7 @@ import javax.naming.directory.BasicAttribute
 import javax.naming.directory.BasicAttributes
 import javax.naming.directory.DirContext
 import javax.naming.directory.ModificationItem
+import javax.naming.directory.NoSuchAttributeException
 import javax.naming.ldap.LdapName
 import javax.naming.ldap.Rdn
 
@@ -1547,7 +1548,9 @@ class LdapConnector implements Connector {
             String primaryKeyAttrValue,
             Object globallyUniqueIdentifierAttrValue,
             String attributeName,
-            Object attributeValue
+            Object newAttributeValue,
+            boolean useRemoveAndAddApproach = false,
+            Object oldAttributeValue = null // when useRemoveAndAddApproach is true
     ) throws LdapConnectorException {
         MatchingEntryResult matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
         if (!matchingEntryResult?.entry) {
@@ -1559,15 +1562,33 @@ class LdapConnector implements Connector {
         }
 
         Throwable exception
-        ModificationItem item = null
+        ModificationItem[] items = null
         try {
             // Spring LDAP doesn't support write-only attributes (like
             // userPassword) so that's why we use DirContext directly
             // here.
             DirContext dirctx = reqCtx.ldapTemplate.contextSource.readWriteContext
             try {
-                item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, attributeValue))
-                dirctx.modifyAttributes(matchingEntryResult.entry.dn, item)
+                if (!useRemoveAndAddApproach) {
+                    ModificationItem item = new ModificationItem(DirContext.REPLACE_ATTRIBUTE, new BasicAttribute(attributeName, newAttributeValue))
+                    items = [item]
+                    dirctx.modifyAttributes(matchingEntryResult.entry.dn, items)
+                } else {
+                    // Active Directory requires this approach when user
+                    // changes own password.  First try remove and add and
+                    // if that fails, try just an add.
+                    try {
+                        ModificationItem removeItem = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(attributeName, oldAttributeValue))
+                        ModificationItem addItem = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute(attributeName, newAttributeValue))
+                        items = [removeItem, addItem]
+                        dirctx.modifyAttributes(matchingEntryResult.entry.dn, items)
+                    }
+                    catch (NoSuchAttributeException ignored) {
+                        ModificationItem addItem = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute(attributeName, newAttributeValue))
+                        items = [addItem]
+                        dirctx.modifyAttributes(matchingEntryResult.entry.dn, items)
+                    }
+                }
             }
             finally {
                 dirctx.close()
@@ -1588,9 +1609,9 @@ class LdapConnector implements Connector {
                     foundMethod: matchingEntryResult.foundObjectMethod,
                     pkey: primaryKeyAttrValue,
                     attributeName: attributeName,
-                    attributeValue: attributeValue,
+                    attributeValue: newAttributeValue,
                     dn: dn,
-                    modificationItems: [item],
+                    modificationItems: items,
                     exception: exception
             ))
         }
