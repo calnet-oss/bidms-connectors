@@ -1285,7 +1285,8 @@ class LdapConnectorSpec extends Specification {
         exception.cause instanceof ConnectorObjectNotFoundException
     }
 
-    void "test setAttribute()"() {
+    @Unroll
+    void "test setAttribute: #description"() {
         given:
         UidObjectDefinition objDef = new UidObjectDefinition(
                 objectClass: "person",
@@ -1311,7 +1312,7 @@ class LdapConnectorSpec extends Specification {
         List<Map<String, Object>> retrieved = searchForUid(uid)
         assert retrieved.first().description == "initial test"
 
-        boolean wasModified1 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "description", "updated")
+        boolean wasModified1 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "description", "updated", useRemoveAndAddApproach, oldAttributeValue)
         boolean wasModified2 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "userPassword", "foobar")
         boolean wasModified3 = ldapConnector.setAttribute(new LdapRequestContext(ldapTemplate, eventId, objDef, null), null, uid, null, "userPassword", "foobar2")
         retrieved = searchForUid(uid)
@@ -1331,6 +1332,11 @@ class LdapConnectorSpec extends Specification {
         1 * insertEventCallback.receive(_)
         3 * setAttributeEventCallback.receive(_)
         1 * persistCompletionEventCallback.receive(_)
+
+        where:
+        description                     | useRemoveAndAddApproach | oldAttributeValue
+        "using replace approach"        | false                   | null
+        "using add and remove approach" | true                    | "initial test"
     }
 
     void "test attempted setAttribute() on a nonexistent object"() {
