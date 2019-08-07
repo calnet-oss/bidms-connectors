@@ -73,6 +73,8 @@ import javax.naming.directory.ModificationItem
 import javax.naming.directory.NoSuchAttributeException
 import javax.naming.ldap.LdapName
 import javax.naming.ldap.Rdn
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Connector for LDAP and Active Directory directory servers.
@@ -265,7 +267,7 @@ class LdapConnector implements Connector {
     /**
      * For queuing up asynchronous callback messages
      */
-    private final LinkedList<LdapEventMessage> callbackMessageQueue = (LinkedList<LdapEventMessage>) Collections.synchronizedList(new LinkedList<LdapEventMessage>())
+    private final LinkedBlockingQueue<LdapEventMessage> callbackMessageQueue = new LinkedBlockingQueue<LdapEventMessage>()
 
     /**
      * If true, calls to callbacks will be done synchronously instead of
@@ -340,13 +342,16 @@ class LdapConnector implements Connector {
 
     /**
      * The callback queue monitor thread calls this to see if there are
-     * messages in the callback queue.
+     * messages in the callback queue.  Blocks until a message appears in
+     * the queue or the timeout period has elapsed.
      *
-     * @return The next message in the callback queue or null if the queue
-     *         is empty.
+     * @return The next message in the callback queue.  Returns null if
+     *         timeout period has elapsed.
+     * @throws InterruptedException if the thread is interrupted while
+     *         blocking
      */
-    protected LdapEventMessage pollCallbackQueue() {
-        return callbackMessageQueue.poll()
+    protected LdapEventMessage pollCallbackQueue(long timeout, TimeUnit unit) throws InterruptedException {
+        return callbackMessageQueue.poll(timeout, unit)
     }
 
     /**
@@ -359,9 +364,12 @@ class LdapConnector implements Connector {
         if (isSynchronousCallback) {
             invokeCallback(eventMessage)
         } else {
-            synchronized (callbackMonitorThread) {
-                callbackMessageQueue.add(eventMessage)
-                callbackMonitorThread.notify()
+            if (eventMessage) {
+                if (!callbackMessageQueue.offer(eventMessage)) {
+                    throw new LdapConnectorException("Could not add event message to the callback message queue")
+                }
+            } else {
+                log.warn("deliveryCallbackMessage was called with a null eventMessage")
             }
         }
     }

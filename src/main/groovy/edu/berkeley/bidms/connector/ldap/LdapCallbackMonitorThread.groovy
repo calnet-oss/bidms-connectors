@@ -30,6 +30,8 @@ package edu.berkeley.bidms.connector.ldap
 import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
 import groovy.util.logging.Slf4j
 
+import java.util.concurrent.TimeUnit
+
 /**
  * Monitor's the LdapConnector's callback queue and invokes callbacks asynchronously when messages are present on the queue.
  */
@@ -56,33 +58,29 @@ class LdapCallbackMonitorThread extends Thread {
      */
     @Override
     void run() {
-        while (!requestStop) {
-            try {
-                synchronized (this) {
-                    wait(1000)
-                }
-                LdapEventMessage eventMessage = null
-                int dequeueCount = 0
-                while (!requestStop && (eventMessage = ldapConnector.pollCallbackQueue())) {
-                    if (eventMessage != null) {
+        try {
+            while (!requestStop) {
+                try {
+                    LdapEventMessage eventMessage = null
+                    while (!requestStop && ((eventMessage = ldapConnector.pollCallbackQueue(1, TimeUnit.SECONDS)) != null)) {
                         try {
                             ldapConnector.invokeCallback(eventMessage)
                         }
                         catch (Exception e) {
                             log.error("There was an asynchronous callback exception", e)
                         }
-                        dequeueCount++
                     }
                 }
-                if (dequeueCount) {
-                    synchronized (this) {
-                        notifyAll()
-                    }
+                catch (InterruptedException ignored) {
+                    // no-op
                 }
             }
-            catch (InterruptedException ignored) {
-                // no-op
-            }
+        }
+        catch (Throwable t) {
+            log.error("There was an unexpected LdapCallbackMonitorThread exception", t)
+        }
+        finally {
+            log.warn("LdapCallbackMonitorThread is exiting.  requestStop=$requestStop")
         }
     }
 
