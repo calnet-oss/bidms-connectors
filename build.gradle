@@ -53,7 +53,7 @@ dependencies {
 
     compile "org.springframework.ldap:spring-ldap-core:2.3.2.RELEASE"
 
-    testCompile "software.apacheds.embedded:apacheds-embedded:0.3"
+    testCompile "software.apacheds.embedded:apacheds-embedded:0.4"
     testCompile "org.apache.commons:commons-pool2:2.4.3"
 }
 
