@@ -1717,14 +1717,24 @@ class LdapConnector implements Connector {
     }
 
     @SuppressWarnings("GrMethodMayBeStatic")
-    protected void addDnToGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
-        ModificationItem mod = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
-        reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
+    void addDnToGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) throws LdapConnectorException {
+        try {
+            ModificationItem mod = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
+            reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
+        }
+        catch (Throwable t) {
+            throw new LdapConnectorException(t)
+        }
     }
 
     @SuppressWarnings("GrMethodMayBeStatic")
-    protected void removeDnFromGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) {
-        ModificationItem mod = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
-        reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
+    void removeDnFromGroup(LdapRequestContext reqCtx, String memberDN, Name groupDN) throws LdapConnectorException {
+        try {
+            ModificationItem mod = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute(reqCtx.objectDef.groupMemberAttributeName, memberDN))
+            reqCtx.ldapTemplate.modifyAttributes(groupDN, [mod] as ModificationItem[])
+        }
+        catch (Throwable t) {
+            throw new LdapConnectorException(t)
+        }
     }
 }
