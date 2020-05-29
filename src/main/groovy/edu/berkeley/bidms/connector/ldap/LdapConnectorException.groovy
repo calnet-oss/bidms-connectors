@@ -46,7 +46,7 @@ class LdapConnectorException extends ConnectorException {
     private Integer ldapErrorCode
     private Integer adErrorCode
 
-    private NamingException getNamingException() {
+    NamingException getNamingException() {
         if (_namingException == null) {
             Throwable _cause = cause
             while (_cause && !(_cause instanceof NamingException)) {
