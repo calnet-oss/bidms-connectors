@@ -42,16 +42,16 @@ task javadocJar (type: Jar, dependsOn: groovydoc) {
 }
 
 dependencies {
-    compile "org.codehaus.groovy:groovy-all:2.4.11"
+    compile "org.codehaus.groovy:groovy-all:2.4.19"
 
-    testCompile "org.spockframework:spock-core:1.1-groovy-2.4"
-    testCompile "cglib:cglib-nodep:3.2.9"
+    testCompile "org.spockframework:spock-core:1.3-groovy-2.4"
+    testCompile "cglib:cglib-nodep:3.2.12"
     testCompile "junit:junit:4.12"
-    testCompile "org.slf4j:slf4j-api:1.7.25"
-    testRuntime "org.apache.logging.log4j:log4j-core:2.11.1"
-    testRuntime "org.apache.logging.log4j:log4j-slf4j-impl:2.11.1"
+    testCompile "org.slf4j:slf4j-api:1.7.30"
+    testRuntime "org.apache.logging.log4j:log4j-core:2.11.2"
+    testRuntime "org.apache.logging.log4j:log4j-slf4j-impl:2.11.2"
 
-    compile "org.springframework.ldap:spring-ldap-core:2.3.2.RELEASE"
+    compile "org.springframework.ldap:spring-ldap-core:2.3.3.RELEASE"
 
     testCompile "software.apacheds.embedded:apacheds-embedded:0.4"
     testCompile "org.apache.commons:commons-pool2:2.4.3"
