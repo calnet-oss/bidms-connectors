@@ -24,13 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event;
 
 /**
  * Event type enum.
  */
-enum LdapEventType {
+public enum LdapEventType {
     DELETE_EVENT,
     INSERT_EVENT,
     RENAME_EVENT,

@@ -24,27 +24,98 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package edu.berkeley.bidms.connector.ldap.event.message
+package edu.berkeley.bidms.connector.ldap.event.message;
 
-import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition
-import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
-import edu.berkeley.bidms.connector.ldap.event.LdapEventType
-import groovy.transform.EqualsAndHashCode
-import groovy.transform.ToString
+import edu.berkeley.bidms.connector.ldap.LdapObjectDefinition;
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext;
+import edu.berkeley.bidms.connector.ldap.event.LdapEventType;
+
+import java.util.Objects;
 
 /**
  * Persist completion messages sent to callbacks.
  */
-@ToString(includeNames = true)
-@EqualsAndHashCode
-class LdapPersistCompletionEventMessage implements LdapEventMessage {
-    LdapEventType getEventType() {
-        return LdapEventType.PERSIST_COMPLETION_EVENT
+public class LdapPersistCompletionEventMessage implements LdapEventMessage {
+
+    private boolean success;
+    private String eventId;
+    private LdapObjectDefinition objectDef;
+    private LdapCallbackContext context;
+    private Throwable exception;
+
+    @Override
+    public LdapEventType getEventType() {
+        return LdapEventType.PERSIST_COMPLETION_EVENT;
     }
 
-    boolean success
-    String eventId
-    LdapObjectDefinition objectDef
-    LdapCallbackContext context
-    Throwable exception
+    @Override
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public void setSuccess(boolean success) {
+        this.success = success;
+    }
+
+    public String getEventId() {
+        return eventId;
+    }
+
+    public void setEventId(String eventId) {
+        this.eventId = eventId;
+    }
+
+    public LdapObjectDefinition getObjectDef() {
+        return objectDef;
+    }
+
+    public void setObjectDef(LdapObjectDefinition objectDef) {
+        this.objectDef = objectDef;
+    }
+
+    public LdapCallbackContext getContext() {
+        return context;
+    }
+
+    public void setContext(LdapCallbackContext context) {
+        this.context = context;
+    }
+
+    public Throwable getException() {
+        return exception;
+    }
+
+    public void setException(Throwable exception) {
+        this.exception = exception;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof LdapPersistCompletionEventMessage)) return false;
+        LdapPersistCompletionEventMessage that = (LdapPersistCompletionEventMessage) o;
+        return success == that.isSuccess() &&
+                getEventType() == that.getEventType() &&
+                Objects.equals(eventId, that.getEventId()) &&
+                Objects.equals(objectDef, that.getObjectDef()) &&
+                Objects.equals(context, that.getContext()) &&
+                Objects.equals(exception, that.getException());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(getEventType(), success, eventId, objectDef, context, exception);
+    }
+
+    @Override
+    public String toString() {
+        return "LdapPersistCompletionEventMessage{" +
+                "eventType=" + getEventType() +
+                ", success=" + success +
+                ", eventId='" + eventId + '\'' +
+                ", objectDef=" + objectDef +
+                ", context=" + context +
+                ", exception=" + exception +
+                '}';
+    }
 }

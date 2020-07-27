@@ -24,11 +24,21 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector;
 
-package edu.berkeley.bidms.connector
+public class ConnectorException extends Exception {
+    public ConnectorException() {
+    }
 
-import groovy.transform.InheritConstructors
+    public ConnectorException(String s) {
+        super(s);
+    }
 
-@InheritConstructors
-class ConnectorException extends Exception {
+    public ConnectorException(String s, Throwable throwable) {
+        super(s, throwable);
+    }
+
+    public ConnectorException(Throwable throwable) {
+        super(throwable);
+    }
 }

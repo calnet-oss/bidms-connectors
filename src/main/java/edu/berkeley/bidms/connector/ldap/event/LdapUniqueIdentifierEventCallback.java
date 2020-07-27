@@ -24,14 +24,15 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event;
 
-package edu.berkeley.bidms.connector.ldap.event
-
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage;
 
 /**
- * Callback for events where the unique identifier has been created or possibly changed.
- * It's possible this callback is called on rename and update events where the directory has not actually changed the unique identifier.
+ * Callback for events where the unique identifier has been created or
+ * possibly changed. It's possible this callback is called on rename and
+ * update events where the directory has not actually changed the unique
+ * identifier.
  */
-interface LdapUniqueIdentifierEventCallback extends LdapEventCallback<LdapUniqueIdentifierEventMessage> {
+public interface LdapUniqueIdentifierEventCallback extends LdapEventCallback<LdapUniqueIdentifierEventMessage> {
 }
