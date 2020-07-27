@@ -24,13 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event;
 
-package edu.berkeley.bidms.connector.ldap.event
-
-import edu.berkeley.bidms.connector.CallbackContext
+import edu.berkeley.bidms.connector.CallbackContext;
 
 /**
  * Caller-provided context that is sent back to callbacks.
  */
-interface LdapCallbackContext extends CallbackContext {
+public interface LdapCallbackContext extends CallbackContext {
 }

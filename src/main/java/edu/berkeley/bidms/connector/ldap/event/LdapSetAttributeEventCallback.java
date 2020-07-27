@@ -24,13 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event;
 
-package edu.berkeley.bidms.connector.ldap.event
-
-import edu.berkeley.bidms.connector.ldap.event.message.LdapSetAttributeEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapSetAttributeEventMessage;
 
 /**
  * Callback for set attribute events.
  */
-interface LdapSetAttributeEventCallback extends LdapEventCallback<LdapSetAttributeEventMessage> {
+public interface LdapSetAttributeEventCallback extends LdapEventCallback<LdapSetAttributeEventMessage> {
 }

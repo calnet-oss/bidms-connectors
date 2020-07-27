@@ -24,11 +24,21 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector;
 
-package edu.berkeley.bidms.connector
+public class ConnectorObjectNotFoundException extends ConnectorException {
+    public ConnectorObjectNotFoundException() {
+    }
 
-import groovy.transform.InheritConstructors
+    public ConnectorObjectNotFoundException(String s) {
+        super(s);
+    }
 
-@InheritConstructors
-class ConnectorObjectNotFoundException extends ConnectorException {
+    public ConnectorObjectNotFoundException(String s, Throwable throwable) {
+        super(s, throwable);
+    }
+
+    public ConnectorObjectNotFoundException(Throwable throwable) {
+        super(throwable);
+    }
 }

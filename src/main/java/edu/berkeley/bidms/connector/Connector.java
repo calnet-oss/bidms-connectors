@@ -24,12 +24,13 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector;
 
-package edu.berkeley.bidms.connector
+import java.util.Map;
 
 /**
  * Interface for a connector.
  */
-interface Connector {
-    boolean persist(String eventId, ObjectDefinition objectDef, CallbackContext context, Map<String, Object> jsonObject, boolean isDelete) throws ConnectorException
+public interface Connector {
+    boolean persist(String eventId, ObjectDefinition objectDef, CallbackContext context, Map<String, Object> jsonObject, boolean isDelete) throws ConnectorException;
 }

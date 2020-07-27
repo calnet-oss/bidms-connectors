@@ -24,16 +24,15 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event;
 
-package edu.berkeley.bidms.connector.ldap.event
-
-import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapEventMessage;
 
 /**
  * Interface for an event callback.
  *
  * @param <T> The type of LdapEventMessage for the callback.
  */
-interface LdapEventCallback<T extends LdapEventMessage> {
-    void receive(T message)
+public interface LdapEventCallback<T extends LdapEventMessage> {
+    void receive(T message);
 }

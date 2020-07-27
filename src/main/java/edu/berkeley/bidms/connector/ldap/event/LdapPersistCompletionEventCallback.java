@@ -24,12 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package edu.berkeley.bidms.connector.ldap.event
+package edu.berkeley.bidms.connector.ldap.event;
 
-import edu.berkeley.bidms.connector.ldap.event.message.LdapPersistCompletionEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapPersistCompletionEventMessage;
 
 /**
  * Callback for persist completion events.
  */
-interface LdapPersistCompletionEventCallback extends LdapEventCallback<LdapPersistCompletionEventMessage> {
+public interface LdapPersistCompletionEventCallback extends LdapEventCallback<LdapPersistCompletionEventMessage> {
 }

@@ -24,12 +24,20 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap;
 
-package edu.berkeley.bidms.connector.ldap
-
-class LdapDynamicAttributeCallbackResult {
+public class LdapDynamicAttributeCallbackResult {
     /**
-     * The new attribute value.  A null indicates the attribute is to be removed.
+     * The new attribute value.  A null indicates the attribute is to be
+     * removed.
      */
-    Object attributeValue
+    private Object attributeValue;
+
+    public Object getAttributeValue() {
+        return attributeValue;
+    }
+
+    public void setAttributeValue(Object attributeValue) {
+        this.attributeValue = attributeValue;
+    }
 }

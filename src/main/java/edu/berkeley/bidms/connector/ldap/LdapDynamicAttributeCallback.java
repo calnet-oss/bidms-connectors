@@ -24,18 +24,18 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap;
 
-package edu.berkeley.bidms.connector.ldap
+import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext;
 
-import edu.berkeley.bidms.connector.ldap.event.LdapCallbackContext
+import javax.naming.Name;
+import java.util.Map;
 
-import javax.naming.Name
-
-interface LdapDynamicAttributeCallback {
+public interface LdapDynamicAttributeCallback {
     /**
      * @return A LdapDynamicAttributeCallbackResult instance that contains
-     * the attributeValue or null if the attribute is not to be modified. 
-     * If you wish to remove the attribute, return an instance of
+     * the attributeValue or null if the attribute is not to be modified. If
+     * you wish to remove the attribute, return an instance of
      * LdapDynamicAttributeCallbackResult where the attributeValue is set to
      * null.
      */
@@ -47,10 +47,10 @@ interface LdapDynamicAttributeCallback {
             String pkey,
             Name dn,
             String attributeName,
-            Map<String,Object> newAttributeMap,
-            Map<String,Object> existingAttributeMap,
+            Map<String, Object> newAttributeMap,
+            Map<String, Object> existingAttributeMap,
             Object existingValue,
             String dynamicCallbackIndicator,
             Object dynamicValueTemplate
-    )
+    );
 }

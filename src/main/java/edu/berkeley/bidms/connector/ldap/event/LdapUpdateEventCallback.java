@@ -24,13 +24,12 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+package edu.berkeley.bidms.connector.ldap.event;
 
-package edu.berkeley.bidms.connector.ldap.event
-
-import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
+import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage;
 
 /**
  * Callback for update events.
  */
-interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
+public interface LdapUpdateEventCallback extends LdapEventCallback<LdapUpdateEventMessage> {
 }
