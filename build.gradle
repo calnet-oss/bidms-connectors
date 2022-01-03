@@ -48,8 +48,8 @@ dependencies {
     testCompile "cglib:cglib-nodep:3.2.12"
     testCompile "junit:junit:4.12"
     testCompile "org.slf4j:slf4j-api:1.7.32"
-    testRuntime "org.apache.logging.log4j:log4j-core:2.16.0"
-    testRuntime "org.apache.logging.log4j:log4j-slf4j-impl:2.16.0"
+    testRuntime "org.apache.logging.log4j:log4j-core:2.17.1"
+    testRuntime "org.apache.logging.log4j:log4j-slf4j-impl:2.17.1"
 
     compile "org.springframework.ldap:spring-ldap-core:2.3.3.RELEASE"
 
