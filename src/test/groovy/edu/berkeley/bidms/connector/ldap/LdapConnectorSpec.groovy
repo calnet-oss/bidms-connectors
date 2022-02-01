@@ -52,7 +52,7 @@ import org.springframework.ldap.pool2.factory.PoolConfig
 import org.springframework.ldap.pool2.factory.PooledContextSource
 import org.springframework.ldap.query.LdapQuery
 import org.springframework.ldap.support.LdapNameBuilder
-import software.apacheds.embedded.EmbeddedLdapServer
+import io.github.bkoehm.apacheds.embedded.EmbeddedLdapServer
 import spock.lang.Shared
 import spock.lang.Specification
 import spock.lang.Unroll
