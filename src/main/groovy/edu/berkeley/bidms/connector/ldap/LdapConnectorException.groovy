@@ -54,7 +54,7 @@ class LdapConnectorException extends ConnectorException {
      */
     @Override
     String getMessage() {
-        return scrubString(message)
+        return scrubString(super.getMessage())
     }
 
     private static String scrubString(String str) {

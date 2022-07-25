@@ -44,6 +44,7 @@ import edu.berkeley.bidms.connector.ldap.event.message.LdapRenameEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUniqueIdentifierEventMessage
 import edu.berkeley.bidms.connector.ldap.event.message.LdapUpdateEventMessage
 import org.slf4j.LoggerFactory
+import org.springframework.ldap.AuthenticationException
 import org.springframework.ldap.NameNotFoundException
 import org.springframework.ldap.core.DirContextAdapter
 import org.springframework.ldap.core.LdapTemplate
@@ -58,6 +59,7 @@ import spock.lang.Specification
 import spock.lang.Unroll
 
 import javax.naming.Name
+import javax.naming.NamingException
 import javax.naming.ldap.LdapName
 import javax.naming.ldap.Rdn
 
@@ -1527,6 +1529,14 @@ class LdapConnectorSpec extends Specification {
         // person was removed from group1
         group1Retrieved.first().uniqueMember == "ou=groups,dc=berkeley,dc=edu"
         group2Retrieved.first().uniqueMember == ["ou=groups,dc=berkeley,dc=edu", "uid=1,ou=people,dc=berkeley,dc=edu"]
+    }
+
+    void "test null character replacement in LdapConnectorException message"() {
+        when:
+        def exception = new LdapConnectorException(new AuthenticationException(new javax.naming.AuthenticationException("test \u0000message")))
+
+        then:
+        exception.message == "org.springframework.ldap.AuthenticationException: test message; nested exception is javax.naming.AuthenticationException: test message"
     }
 
     LdapTemplate getLdapTemplate() {
