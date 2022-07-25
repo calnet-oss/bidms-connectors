@@ -46,6 +46,21 @@ class LdapConnectorException extends ConnectorException {
     private Integer ldapErrorCode
     private Integer adErrorCode
 
+    /**
+     * When interacting with AD, it has been observed that some
+     * NamingException strings may contain characters equating to the
+     * character \u0000, i.e.  the 'null' character.  These null characters
+     * can be problematic for some JSON parsers.
+     */
+    @Override
+    String getMessage() {
+        return scrubString(message)
+    }
+
+    private static String scrubString(String str) {
+        return str.replaceAll("\u0000", "")
+    }
+
     NamingException getNamingException() {
         if (_namingException == null) {
             Throwable _cause = cause
