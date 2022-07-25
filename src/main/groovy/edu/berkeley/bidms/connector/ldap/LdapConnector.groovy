@@ -1492,7 +1492,13 @@ class LdapConnector implements Connector {
             Object globallyUniqueIdentifierAttrValue,
             String[] attributeNamesToRemove
     ) throws LdapConnectorException {
-        MatchingEntryResult matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        MatchingEntryResult matchingEntryResult = null
+        try {
+            matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        }
+        catch (Throwable t) {
+            throw new LdapConnectorException(t)
+        }
         if (!matchingEntryResult?.entry) {
             throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
         }
@@ -1560,7 +1566,13 @@ class LdapConnector implements Connector {
             boolean useRemoveAndAddApproach = false,
             Object oldAttributeValue = null // when useRemoveAndAddApproach is true
     ) throws LdapConnectorException {
-        MatchingEntryResult matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        MatchingEntryResult matchingEntryResult = null
+        try {
+            matchingEntryResult = findMatchingEntry(reqCtx, dn, primaryKeyAttrValue, globallyUniqueIdentifierAttrValue)
+        }
+        catch (Throwable t) {
+            throw new LdapConnectorException(t)
+        }
         if (!matchingEntryResult?.entry) {
             throw new LdapConnectorException(new ConnectorObjectNotFoundException("not found: dn=$dn, primaryKey=$primaryKeyAttrValue, globUniqId: $globallyUniqueIdentifierAttrValue"))
         }
