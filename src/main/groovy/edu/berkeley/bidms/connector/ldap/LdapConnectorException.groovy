@@ -44,7 +44,7 @@ class LdapConnectorException extends ConnectorException {
 
     private NamingException _namingException
     private Integer ldapErrorCode
-    private Integer adErrorCode
+    private Long adErrorCode
 
     /**
      * When interacting with AD, it has been observed that some
@@ -99,10 +99,10 @@ class LdapConnectorException extends ConnectorException {
      * This is the Active Directory error hex value that can be looked up at
      * https://msdn.microsoft.com/en-us/library/windows/desktop/ms681381(v=vs.85).aspx
      *
-     * @return Error code as an Integer.  To get back the hex string, use
-     *         <code>Integer.toHexString()</code>.
+     * @return Error code as a Long.  To get back the hex string, use
+     *         <code>Long.toHexString()</code>.
      */
-    Integer getActiveDirectoryErrorCode() {
+    Long getActiveDirectoryErrorCode() {
         if (adErrorCode == null && getNamingException() && getNamingException().message) {
             // Unfortunately, Java doesn't provide any way to extract the
             // Active Directory error code from the NamingException other
@@ -110,7 +110,7 @@ class LdapConnectorException extends ConnectorException {
             Matcher m = adErrorCodePattern.matcher(cause.message)
             if (m.find()) {
                 this.ldapErrorCode = m.group(1) as Integer
-                this.adErrorCode = Integer.valueOf(m.group(2), 16)
+                this.adErrorCode = Long.valueOf(m.group(2), 16)
             }
         }
 
