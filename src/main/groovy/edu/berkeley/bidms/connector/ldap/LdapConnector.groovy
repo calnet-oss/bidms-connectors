@@ -943,7 +943,14 @@ class LdapConnector implements Connector {
      * attribute names in the directory schema, as when retrieved from the
      * directory via a search() or lookup().
      *
-     * @param reqCtx Context for the request
+     * @param eventId Optional eventId string that is passed to callbacks.
+     * @param objectDef An {@link ObjectDefinition} which may contain
+     *        configuration for the particular connector implementation in
+     *        use.
+     * @param context A {@link CallbackContext} for the request if the
+     *        connector implements callbacks and if they utilize a callback
+     *        context.
+
      * @param attrMap The map of the attributes for the directory object
      *        where the keys in the map are attribute names.  For changes to
      *        be detected properly, attribute names are case sensitive and
@@ -953,7 +960,7 @@ class LdapConnector implements Connector {
      *        will be deleted.  If objectDef.isRemoveDuplicatePrimaryKeys()
      *        is true, all objects matching the primary key, as returned by
      *        searchByPrimaryKey() (if enabled), will be deleted.
-     * @return true if an update actually occured in the directory.  false
+     * @return true if an update actually occurred in the directory.  false
      *         may be returned if the object is unchanged.
      * @throws LdapConnectorException If an error occurs
      */
