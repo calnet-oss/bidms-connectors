@@ -22,7 +22,7 @@ repositories {
             }
         }
         else {
-            jcenter()
+            mavenCentral()
         }
 }
 
